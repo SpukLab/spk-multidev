@@ -201,10 +201,14 @@ evitar retomes evitables.
 - **Persistencia de sesión entre dispositivos (decisión confirmada por el
   usuario: SÍ, necesaria).** El historial de chat, el estado de los paneles
   (modelo/rol activo) y la cola pendiente de Code Intake se guardan en una
-  base de datos en la nube (ej. Vercel Postgres o KV), no solo en memoria del
-  navegador. Esto permite arrancar una sesión en iPad y continuarla
-  exactamente donde quedó desde la PC. Cambia la arquitectura: el hub deja
-  de ser stateless y pasa a requerir una capa de datos persistente desde v1.
+  base de datos en la nube. Se agrega también a la arquitectura ratificada:
+  el hub deja de ser stateless y pasa a requerir una capa de datos
+  persistente desde v1.
+  **Backend elegido: Supabase (Postgres)** — el usuario ya tenía cuenta
+  activa; encaja mejor que Vercel KV/Redis porque el esquema necesario
+  (sesiones, historial de mensajes, cola de Code Intake) es relacional, no
+  clave-valor efímero. Esquema inicial en `supabase/schema.sql`. Acceso
+  server-side únicamente vía service role key (nunca expuesta al cliente).
 
 ## 13. Contexto de proyecto adjunto automático — RATIFICADA
 

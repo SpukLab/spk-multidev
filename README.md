@@ -28,3 +28,9 @@ npm install
 cp .env.example .env.local   # completar las keys
 npm run dev
 ```
+
+## Base de datos
+
+Persistencia vía Supabase (Postgres). Correr `supabase/schema.sql` en el
+SQL editor del proyecto de Supabase antes del primer uso. Variables
+necesarias: `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
