@@ -1,0 +1,156 @@
+import { Octokit } from "@octokit/rest";
+import { IntakeInstruction } from "../codeIntake/parser";
+
+export interface RepoRef {
+  owner: string;
+  repo: string;
+  branch?: string; // default: rama por defecto del repo
+}
+
+function getOctokit(): Octokit {
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error("GITHUB_TOKEN no configurado.");
+  return new Octokit({ auth: token });
+}
+
+/**
+ * Trae el contenido REAL actual de un archivo desde GitHub.
+ * Nunca hay que confiar en lo que la IA "cree" que hay en el repo
+ * (CONTEXT_BASE.md sección 7) — este fetch es obligatorio antes de
+ * aplicar cualquier patch o mostrar un diff.
+ */
+export async function fetchFileContent(
+  ref: RepoRef,
+  path: string
+): Promise<string | null> {
+  const octokit = getOctokit();
+  try {
+    const res = await octokit.repos.getContent({
+      owner: ref.owner,
+      repo: ref.repo,
+      path,
+      ref: ref.branch,
+    });
+
+    if (Array.isArray(res.data) || res.data.type !== "file") {
+      throw new Error(`${path} no es un archivo simple.`);
+    }
+
+    const content = Buffer.from(res.data.content, "base64").toString("utf-8");
+    return content;
+  } catch (err: unknown) {
+    const httpErr = err as { status?: number };
+    if (httpErr.status === 404) return null; // no existe todavía
+    throw err;
+  }
+}
+
+/**
+ * Aplica una lista de instrucciones de Code Intake ya resueltas (con el
+ * contenido final de cada archivo) como UN SOLO commit atómico, usando la
+ * Git Data API (blobs -> tree -> commit -> update ref). Ver sección 7 y 15.
+ */
+export async function commitFiles(
+  ref: RepoRef,
+  resolvedFiles: { path: string; content: string | null }[], // content null = delete
+  message: string
+): Promise<string> {
+  const octokit = getOctokit();
+  const branch = ref.branch ?? (await getDefaultBranch(ref));
+
+  const { data: refData } = await octokit.git.getRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+  });
+  const latestCommitSha = refData.object.sha;
+
+  const { data: latestCommit } = await octokit.git.getCommit({
+    owner: ref.owner,
+    repo: ref.repo,
+    commit_sha: latestCommitSha,
+  });
+  const baseTreeSha = latestCommit.tree.sha;
+
+  const treeItems = await Promise.all(
+    resolvedFiles.map(async (file) => {
+      if (file.content === null) {
+        // delete: se marca con sha null en el tree
+        return { path: file.path, mode: "100644" as const, type: "blob" as const, sha: null };
+      }
+      const { data: blob } = await octokit.git.createBlob({
+        owner: ref.owner,
+        repo: ref.repo,
+        content: Buffer.from(file.content, "utf-8").toString("base64"),
+        encoding: "base64",
+      });
+      return { path: file.path, mode: "100644" as const, type: "blob" as const, sha: blob.sha };
+    })
+  );
+
+  const { data: newTree } = await octokit.git.createTree({
+    owner: ref.owner,
+    repo: ref.repo,
+    base_tree: baseTreeSha,
+    tree: treeItems,
+  });
+
+  const { data: newCommit } = await octokit.git.createCommit({
+    owner: ref.owner,
+    repo: ref.repo,
+    message,
+    tree: newTree.sha,
+    parents: [latestCommitSha],
+  });
+
+  await octokit.git.updateRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+    sha: newCommit.sha,
+  });
+
+  return newCommit.sha;
+}
+
+/**
+ * "Deshacer último push" (sección 11): revierte moviendo el branch al
+ * padre del commit actual. Simple y suficiente para uso personal;
+ * no reescribe historia de otros colaboradores porque el repo es de uso
+ * individual.
+ */
+export async function undoLastPush(ref: RepoRef): Promise<void> {
+  const octokit = getOctokit();
+  const branch = ref.branch ?? (await getDefaultBranch(ref));
+
+  const { data: refData } = await octokit.git.getRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+  });
+  const { data: commit } = await octokit.git.getCommit({
+    owner: ref.owner,
+    repo: ref.repo,
+    commit_sha: refData.object.sha,
+  });
+
+  const parentSha = commit.parents[0]?.sha;
+  if (!parentSha) throw new Error("No hay commit padre para revertir a él.");
+
+  await octokit.git.updateRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+    sha: parentSha,
+    force: true,
+  });
+}
+
+async function getDefaultBranch(ref: RepoRef): Promise<string> {
+  const octokit = getOctokit();
+  const { data } = await octokit.repos.get({ owner: ref.owner, repo: ref.repo });
+  return data.default_branch;
+}
+
+// Re-exportado para uso en API routes que resuelven instrucciones de intake.
+export type { IntakeInstruction };
