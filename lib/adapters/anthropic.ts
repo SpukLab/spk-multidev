@@ -1,6 +1,7 @@
-import { ProviderAdapter, SendMessageParams, NormalizedResponse, ChatMessage } from "./types";
+import { ProviderAdapter, SendMessageParams, NormalizedResponse, ChatMessage, ModelInfo } from "./types";
 
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models";
 
 export const anthropicAdapter: ProviderAdapter = {
   id: "anthropic",
@@ -41,5 +42,17 @@ export const anthropicAdapter: ProviderAdapter = {
       content,
       raw: data,
     };
+  },
+
+  async listModels(apiKey: string): Promise<ModelInfo[]> {
+    const res = await fetch(ANTHROPIC_MODELS_URL, {
+      headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    });
+    if (!res.ok) {
+      throw new Error(`No se pudo traer el catálogo de Anthropic (${res.status}).`);
+    }
+    const data = await res.json();
+    const list = (data?.data ?? []) as { id: string; display_name?: string }[];
+    return list.map((m) => ({ id: m.id, label: m.display_name ?? m.id }));
   },
 };

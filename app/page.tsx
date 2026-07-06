@@ -13,10 +13,11 @@ interface PanelState {
   roleId: string;
   messages: PanelMessage[];
   busy: boolean;
+  collapsed: boolean;
 }
 
 function initialPanelState(provider: string, model: string): PanelState {
-  return { provider, model, roleId: "none", messages: [], busy: false };
+  return { provider, model, roleId: "none", messages: [], busy: false, collapsed: false };
 }
 
 let idCounter = 0;
@@ -35,6 +36,7 @@ export default function HomePage() {
   const [owner, setOwner] = useState("SpukLab");
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("main");
+  const [viewMode, setViewMode] = useState<"both" | "left" | "right">("both");
 
   async function sendMessage(panel: "left" | "right", text: string) {
     const state = panel === "left" ? left : right;
@@ -121,44 +123,71 @@ export default function HomePage() {
         </p>
       </header>
 
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        {(["both", "left", "right"] as const).map((mode) => (
+          <button
+            key={mode}
+            onClick={() => setViewMode(mode)}
+            style={{
+              background: viewMode === mode ? "var(--spk-active-bg)" : "var(--spk-button-bg)",
+              color: viewMode === mode ? "var(--spk-active-fg)" : "var(--spk-text-dim)",
+              border: "1px solid var(--spk-border)",
+              borderRadius: 6,
+              padding: "5px 10px",
+              fontSize: 11,
+            }}
+          >
+            {mode === "both" ? "Ambos paneles" : mode === "left" ? "Solo Panel A" : "Solo Panel B"}
+          </button>
+        ))}
+      </div>
+
       <div className="workspace" style={{ marginBottom: 14 }}>
-        <Panel
-          panelId="left"
-          title="Panel A"
-          messages={left.messages}
-          provider={left.provider}
-          model={left.model}
-          roleId={left.roleId}
-          busy={left.busy}
-          onChangeProvider={(p) =>
-            setLeft((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
-          }
-          onChangeModel={(m) => setLeft((s) => ({ ...s, model: m }))}
-          onChangeRole={(r) => setLeft((s) => ({ ...s, roleId: r }))}
-          onSend={(text) => sendMessage("left", text)}
-          onSendToOther={(content, template) => sendToOther("left", content, template)}
-          onOpenInIntake={(content) => setIntakeRawText(content)}
-        />
+        {viewMode !== "right" && (
+          <Panel
+            panelId="left"
+            title="Panel A"
+            messages={left.messages}
+            provider={left.provider}
+            model={left.model}
+            roleId={left.roleId}
+            busy={left.busy}
+            collapsed={left.collapsed}
+            onToggleCollapse={() => setLeft((s) => ({ ...s, collapsed: !s.collapsed }))}
+            onChangeProvider={(p) =>
+              setLeft((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
+            }
+            onChangeModel={(m) => setLeft((s) => ({ ...s, model: m }))}
+            onChangeRole={(r) => setLeft((s) => ({ ...s, roleId: r }))}
+            onSend={(text) => sendMessage("left", text)}
+            onSendToOther={(content, template) => sendToOther("left", content, template)}
+            onOpenInIntake={(content) => setIntakeRawText(content)}
+          />
+        )}
 
-        <LoopConnector />
+        {viewMode === "both" && <LoopConnector />}
 
-        <Panel
-          panelId="right"
-          title="Panel B"
-          messages={right.messages}
-          provider={right.provider}
-          model={right.model}
-          roleId={right.roleId}
-          busy={right.busy}
-          onChangeProvider={(p) =>
-            setRight((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
-          }
-          onChangeModel={(m) => setRight((s) => ({ ...s, model: m }))}
-          onChangeRole={(r) => setRight((s) => ({ ...s, roleId: r }))}
-          onSend={(text) => sendMessage("right", text)}
-          onSendToOther={(content, template) => sendToOther("right", content, template)}
-          onOpenInIntake={(content) => setIntakeRawText(content)}
-        />
+        {viewMode !== "left" && (
+          <Panel
+            panelId="right"
+            title="Panel B"
+            messages={right.messages}
+            provider={right.provider}
+            model={right.model}
+            roleId={right.roleId}
+            busy={right.busy}
+            collapsed={right.collapsed}
+            onToggleCollapse={() => setRight((s) => ({ ...s, collapsed: !s.collapsed }))}
+            onChangeProvider={(p) =>
+              setRight((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
+            }
+            onChangeModel={(m) => setRight((s) => ({ ...s, model: m }))}
+            onChangeRole={(r) => setRight((s) => ({ ...s, roleId: r }))}
+            onSend={(text) => sendMessage("right", text)}
+            onSendToOther={(content, template) => sendToOther("right", content, template)}
+            onOpenInIntake={(content) => setIntakeRawText(content)}
+          />
+        )}
       </div>
 
       <CodeIntakeDrawer

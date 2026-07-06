@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { providers, getModelsForProvider } from "@/lib/providerModels";
 import { defaultRoles } from "@/lib/roles";
 
@@ -8,7 +8,12 @@ export interface PanelMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
-  originLabel?: string; // ej: "Auditor (Claude)" cuando vino del otro panel
+  originLabel?: string;
+}
+
+interface ModelOption {
+  id: string;
+  label?: string;
 }
 
 interface PanelProps {
@@ -19,6 +24,8 @@ interface PanelProps {
   model: string;
   roleId: string;
   busy: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
   onChangeProvider: (providerId: string) => void;
   onChangeModel: (modelId: string) => void;
   onChangeRole: (roleId: string) => void;
@@ -28,13 +35,14 @@ interface PanelProps {
 }
 
 export function Panel({
-  panelId,
   title,
   messages,
   provider,
   model,
   roleId,
   busy,
+  collapsed,
+  onToggleCollapse,
   onChangeProvider,
   onChangeModel,
   onChangeRole,
@@ -46,7 +54,53 @@ export function Panel({
   const [template, setTemplate] = useState("");
   const [templateOpenFor, setTemplateOpenFor] = useState<string | null>(null);
 
-  const models = getModelsForProvider(provider);
+  const [modelOptions, setModelOptions] = useState<ModelOption[]>(getModelsForProvider(provider));
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelFilter, setModelFilter] = useState("");
+  const [catalogWarning, setCatalogWarning] = useState<string | null>(null);
+
+  // Trae el catálogo real de modelos de la cuenta (ej: 121 modelos de NIM)
+  // en vez de la lista hardcodeada de fallback.
+  useEffect(() => {
+    let cancelled = false;
+    setModelsLoading(true);
+    setCatalogWarning(null);
+
+    fetch("/api/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setModelOptions(data.models ?? getModelsForProvider(provider));
+        if (data.warning) setCatalogWarning(data.warning);
+        // Si el modelo actual no está en el catálogo nuevo, auto-seleccionar el primero.
+        const list: ModelOption[] = data.models ?? [];
+        if (list.length > 0 && !list.some((m) => m.id === model)) {
+          onChangeModel(list[0].id);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setModelOptions(getModelsForProvider(provider));
+      })
+      .finally(() => {
+        if (!cancelled) setModelsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
+
+  const filteredModels =
+    modelFilter.trim().length > 0
+      ? modelOptions.filter((m) =>
+          (m.label ?? m.id).toLowerCase().includes(modelFilter.toLowerCase())
+        )
+      : modelOptions;
 
   return (
     <section
@@ -68,11 +122,19 @@ export function Panel({
           display: "flex",
           gap: 8,
           padding: "10px 12px",
-          borderBottom: "1px solid var(--spk-border)",
+          borderBottom: collapsed ? "none" : "1px solid var(--spk-border)",
           flexWrap: "wrap",
           alignItems: "center",
         }}
       >
+        <button
+          onClick={onToggleCollapse}
+          style={{ ...smallButtonStyle, padding: "3px 7px" }}
+          aria-label={collapsed ? "Desplegar panel" : "Colapsar panel"}
+        >
+          {collapsed ? "▸" : "▾"}
+        </button>
+
         <span
           style={{
             fontFamily: "var(--font-mono)",
@@ -97,12 +159,28 @@ export function Panel({
           ))}
         </select>
 
-        <select value={model} onChange={(e) => onChangeModel(e.target.value)} style={selectStyle}>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
+        {modelOptions.length > 12 && (
+          <input
+            value={modelFilter}
+            onChange={(e) => setModelFilter(e.target.value)}
+            placeholder={`Filtrar (${modelOptions.length})`}
+            style={{ ...selectStyle, width: 110 }}
+          />
+        )}
+
+        <select
+          value={model}
+          onChange={(e) => onChangeModel(e.target.value)}
+          style={selectStyle}
+          disabled={modelsLoading}
+        >
+          {modelsLoading && <option>Cargando...</option>}
+          {!modelsLoading &&
+            filteredModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label ?? m.id}
+              </option>
+            ))}
         </select>
 
         <select value={roleId} onChange={(e) => onChangeRole(e.target.value)} style={selectStyle}>
@@ -114,109 +192,140 @@ export function Panel({
         </select>
       </div>
 
-      {/* Mensajes */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "12px", minHeight: 220 }}>
-        {messages.length === 0 && (
-          <p style={{ color: "var(--spk-text-dim)", fontSize: 12 }}>
-            Sin mensajes todavía en este panel.
-          </p>
-        )}
-        {messages.map((m) => (
-          <div key={m.id} style={{ marginBottom: 14 }}>
-            {m.originLabel && (
-              <div
+      {collapsed && catalogWarning && (
+        <p style={{ fontSize: 10, color: "var(--spk-text-dim)", padding: "0 12px 8px" }}>
+          Catálogo: usando fallback ({catalogWarning})
+        </p>
+      )}
+
+      {!collapsed && (
+        <>
+          {catalogWarning && (
+            <p style={{ fontSize: 10, color: "var(--spk-text-dim)", padding: "6px 12px 0" }}>
+              No se pudo traer el catálogo real, usando fallback: {catalogWarning}
+            </p>
+          )}
+
+          {/* Mensajes */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "12px", minHeight: 220 }}>
+            {messages.length === 0 && (
+              <p style={{ color: "var(--spk-text-dim)", fontSize: 12 }}>
+                Sin mensajes todavía en este panel.
+              </p>
+            )}
+            {messages.map((m) => (
+              <div key={m.id} style={{ marginBottom: 14 }}>
+                {m.originLabel && (
+                  <div
+                    style={{
+                      fontFamily: "var(--font-mono)",
+                      fontStyle: "italic",
+                      fontSize: 11,
+                      color: "var(--spk-active-fg)",
+                      marginBottom: 3,
+                    }}
+                  >
+                    ← {m.originLabel}
+                  </div>
+                )}
+                <div
+                  style={{
+                    background:
+                      m.role === "user" ? "var(--spk-button-bg)" : "rgba(255,255,255,0.03)",
+                    border: "1px solid var(--spk-border)",
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                    fontSize: 13,
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                  }}
+                >
+                  {m.content}
+                </div>
+                {m.role === "assistant" && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => setTemplateOpenFor(templateOpenFor === m.id ? null : m.id)}
+                      style={smallButtonStyle}
+                    >
+                      Enviar al otro panel →
+                    </button>
+                    <button onClick={() => onOpenInIntake(m.content)} style={smallButtonStyle}>
+                      Abrir en Code Intake
+                    </button>
+                  </div>
+                )}
+                {templateOpenFor === m.id && (
+                  <div style={{ marginTop: 6 }}>
+                    <input
+                      value={template}
+                      onChange={(e) => setTemplate(e.target.value)}
+                      placeholder="Template opcional, ej: Revisá esto y decime si tiene bugs: [mensaje]"
+                      style={{ ...selectStyle, width: "100%" }}
+                    />
+                    <button
+                      onClick={() => {
+                        onSendToOther(m.content, template);
+                        setTemplateOpenFor(null);
+                        setTemplate("");
+                      }}
+                      style={{ ...smallButtonStyle, marginTop: 4 }}
+                    >
+                      Confirmar envío
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+            {busy && (
+              <p
                 style={{
                   fontFamily: "var(--font-mono)",
                   fontStyle: "italic",
                   fontSize: 11,
                   color: "var(--spk-active-fg)",
-                  marginBottom: 3,
                 }}
               >
-                ← {m.originLabel}
-              </div>
-            )}
-            <div
-              style={{
-                background: m.role === "user" ? "var(--spk-button-bg)" : "rgba(255,255,255,0.03)",
-                border: "1px solid var(--spk-border)",
-                borderRadius: 10,
-                padding: "8px 10px",
-                fontSize: 13,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-word",
-              }}
-            >
-              {m.content}
-            </div>
-            {m.role === "assistant" && (
-              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
-                <button
-                  onClick={() => setTemplateOpenFor(templateOpenFor === m.id ? null : m.id)}
-                  style={smallButtonStyle}
-                >
-                  Enviar al otro panel →
-                </button>
-                <button onClick={() => onOpenInIntake(m.content)} style={smallButtonStyle}>
-                  Abrir en Code Intake
-                </button>
-              </div>
-            )}
-            {templateOpenFor === m.id && (
-              <div style={{ marginTop: 6 }}>
-                <input
-                  value={template}
-                  onChange={(e) => setTemplate(e.target.value)}
-                  placeholder="Template opcional, ej: Revisá esto y decime si tiene bugs: [mensaje]"
-                  style={{ ...selectStyle, width: "100%" }}
-                />
-                <button
-                  onClick={() => {
-                    onSendToOther(m.content, template);
-                    setTemplateOpenFor(null);
-                    setTemplate("");
-                  }}
-                  style={{ ...smallButtonStyle, marginTop: 4 }}
-                >
-                  Confirmar envío
-                </button>
-              </div>
+                Pensando...
+              </p>
             )}
           </div>
-        ))}
-      </div>
 
-      {/* Input */}
-      <div style={{ display: "flex", gap: 6, padding: 10, borderTop: "1px solid var(--spk-border)" }}>
-        <textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Escribí un mensaje..."
-          rows={2}
-          style={{
-            flex: 1,
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid var(--spk-border)",
-            borderRadius: 8,
-            color: "var(--spk-text)",
-            padding: 8,
-            resize: "none",
-          }}
-        />
-        <button
-          disabled={busy || !input.trim()}
-          onClick={() => {
-            onSend(input);
-            setInput("");
-          }}
-          style={{
-            ...smallButtonStyle,
-            opacity: busy || !input.trim() ? 0.5 : 1,
-          }}
-        >
-          {busy ? "..." : "Enviar"}
-        </button>
-      </div>
+          {/* Input */}
+          <div
+            style={{ display: "flex", gap: 6, padding: 10, borderTop: "1px solid var(--spk-border)" }}
+          >
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Escribí un mensaje..."
+              rows={2}
+              style={{
+                flex: 1,
+                background: "rgba(255,255,255,0.03)",
+                border: "1px solid var(--spk-border)",
+                borderRadius: 8,
+                color: "var(--spk-text)",
+                padding: 8,
+                resize: "none",
+              }}
+            />
+            <button
+              disabled={busy || !input.trim()}
+              onClick={() => {
+                onSend(input);
+                setInput("");
+              }}
+              style={{
+                ...smallButtonStyle,
+                opacity: busy || !input.trim() ? 0.5 : 1,
+              }}
+            >
+              {busy ? "..." : "Enviar"}
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }

@@ -1,6 +1,7 @@
-import { ProviderAdapter, SendMessageParams, NormalizedResponse } from "./types";
+import { ProviderAdapter, SendMessageParams, NormalizedResponse, ModelInfo } from "./types";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
 
 export const openaiAdapter: ProviderAdapter = {
   id: "openai",
@@ -31,5 +32,20 @@ export const openaiAdapter: ProviderAdapter = {
       content,
       raw: data,
     };
+  },
+
+  async listModels(apiKey: string): Promise<ModelInfo[]> {
+    const res = await fetch(OPENAI_MODELS_URL, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!res.ok) {
+      throw new Error(`No se pudo traer el catálogo de OpenAI (${res.status}).`);
+    }
+    const data = await res.json();
+    const list = (data?.data ?? []) as { id: string }[];
+    return list
+      .map((m) => ({ id: m.id, label: m.id }))
+      .filter((m) => m.id.includes("gpt") || m.id.includes("o1") || m.id.includes("o3"))
+      .sort((a, b) => a.id.localeCompare(b.id));
   },
 };

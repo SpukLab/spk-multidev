@@ -19,7 +19,13 @@ export interface NormalizedResponse {
   raw?: unknown;
 }
 
+export interface ModelInfo {
+  id: string;
+  label?: string;
+}
+
 export interface ProviderAdapter {
   id: string; // ej: "nvidia", "anthropic", "openai"
   sendMessage(params: SendMessageParams): Promise<NormalizedResponse>;
+  listModels?(apiKey: string): Promise<ModelInfo[]>;
 }
