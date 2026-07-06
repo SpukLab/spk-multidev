@@ -1,0 +1,120 @@
+:root {
+  --spk-bg: linear-gradient(155deg, #13111f, #1b1726);
+  --spk-border: rgba(153, 68, 255, 0.18);
+  --spk-glow: rgba(153, 68, 255, 0.08);
+  --spk-canvas: rgba(153, 68, 255, 0.06);
+  --spk-track: rgba(255, 255, 255, 0.06);
+  --spk-active-bg: rgba(153, 68, 255, 0.18);
+  --spk-active-fg: #b580ff;
+  --spk-button-bg: rgba(153, 68, 255, 0.07);
+  --spk-cyan: #00ffff;
+  --spk-violet: #9944ff;
+  --spk-magenta: #ff00ff;
+  --spk-text: #eeeeee;
+  --spk-text-dim: #9a93ad;
+  --font-body: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--spk-bg);
+  color: var(--spk-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  min-height: 100vh;
+}
+
+body {
+  background-attachment: fixed;
+}
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+select,
+textarea,
+input {
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+::selection {
+  background: var(--spk-active-bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.workspace {
+  display: flex;
+  flex-direction: row;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.loop-connector {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  flex-shrink: 0;
+}
+
+.loop-connector .line {
+  width: 2px;
+  height: 100%;
+  min-height: 120px;
+  background: linear-gradient(180deg, var(--spk-cyan), var(--spk-violet), var(--spk-magenta));
+  background-size: 100% 200%;
+  animation: loop-flow 3s linear infinite;
+  border-radius: 2px;
+  opacity: 0.6;
+}
+
+@keyframes loop-flow {
+  0% {
+    background-position: 0% 0%;
+  }
+  100% {
+    background-position: 0% 200%;
+  }
+}
+
+@media (max-width: 860px) {
+  .workspace {
+    flex-direction: column;
+  }
+  .loop-connector {
+    width: 100%;
+    height: 20px;
+  }
+  .loop-connector .line {
+    width: 100%;
+    height: 2px;
+    min-height: 0;
+    background: linear-gradient(90deg, var(--spk-cyan), var(--spk-violet), var(--spk-magenta));
+    background-size: 200% 100%;
+    animation: loop-flow-horizontal 3s linear infinite;
+  }
+  @keyframes loop-flow-horizontal {
+    0% {
+      background-position: 0% 0%;
+    }
+    100% {
+      background-position: 200% 0%;
+    }
+  }
+}
