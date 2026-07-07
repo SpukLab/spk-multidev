@@ -367,6 +367,7 @@ export default function HomePage() {
         owner={owner}
         repo={repo}
         branch={branch}
+        projectId={projectId}
       />
 
       <div className="tab-bar">

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { StoredApiKeys, CustomRole } from "@/lib/clientStorage";
 import { CleanupPanel } from "./CleanupPanel";
+import { OpenHandsPanel } from "./OpenHandsPanel";
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -14,6 +15,7 @@ interface SettingsDrawerProps {
   owner: string;
   repo: string;
   branch: string;
+  projectId: string | null;
 }
 
 export function SettingsDrawer({
@@ -26,8 +28,9 @@ export function SettingsDrawer({
   owner,
   repo,
   branch,
+  projectId,
 }: SettingsDrawerProps) {
-  const [tab, setTab] = useState<"keys" | "roles" | "cleanup">("keys");
+  const [tab, setTab] = useState<"keys" | "roles" | "cleanup" | "openhands">("keys");
   const [localKeys, setLocalKeys] = useState<StoredApiKeys>(apiKeys);
   const [newRoleLabel, setNewRoleLabel] = useState("");
   const [newRolePrompt, setNewRolePrompt] = useState("");
@@ -133,6 +136,12 @@ export function SettingsDrawer({
             style={{ ...tabButtonStyle, ...(tab === "cleanup" ? tabButtonActiveStyle : {}) }}
           >
             Limpieza
+          </button>
+          <button
+            onClick={() => setTab("openhands")}
+            style={{ ...tabButtonStyle, ...(tab === "openhands" ? tabButtonActiveStyle : {}) }}
+          >
+            OpenHands
           </button>
         </div>
 
@@ -258,6 +267,12 @@ export function SettingsDrawer({
         {tab === "cleanup" && (
           <div style={{ marginTop: 12 }}>
             <CleanupPanel owner={owner} repo={repo} branch={branch} githubToken={apiKeys.github} />
+          </div>
+        )}
+
+        {tab === "openhands" && (
+          <div style={{ marginTop: 12 }}>
+            <OpenHandsPanel projectId={projectId} owner={owner} repo={repo} branch={branch} />
           </div>
         )}
       </div>

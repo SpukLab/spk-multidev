@@ -320,7 +320,56 @@ owner/repo con un tap en vez de tipearlo a mano.
 desactualizada tras remover el Basic Auth global — ver nota ahí: la
 contraseña ahora protege solo las acciones destructivas de limpieza.
 
-## 19. Pendiente de definir en próxima sesión
+## 20. Integración con OpenHands (tareas asíncronas de repo) — RATIFICADA
+
+Problema: tareas complejas de repositorio (delegadas a OpenHands) tardan
+minutos — incompatible con el modelo de request/response síncrono y los
+timeouts de las funciones de Vercel.
+
+**Arquitectura (async, sin polling ni WebSocket propio):**
+
+1. `POST /api/openhands/start` — crea un registro en `agent_jobs` (Supabase,
+   status `queued`), dispara `POST {OPENHANDS_BASE_URL}/conversations` en el
+   Agent Server de OpenHands (self-hosteado por el usuario, fuera de
+   Vercel), guarda el `conversation_id` devuelto, y **responde de
+   inmediato** — nunca espera a que la tarea termine.
+2. El Agent Server de OpenHands trabaja en su propio host (confirmado:
+   soporta un array `webhooks` en su config, con `webhook_url` + headers +
+   reintentos) y empuja eventos de progreso a `POST /api/openhands/webhook`
+   a medida que avanza.
+3. `/api/openhands/webhook` — valida un secreto compartido
+   (`OPENHANDS_WEBHOOK_SECRET`) contra el header `Authorization`, busca el
+   job por `conversation_id`, y solo escribe el evento en
+   `agent_job_events` (Supabase) + actualiza `status` si el evento indica
+   estado terminal (`finished`/`error`). Responde en milisegundos — nunca
+   hace trabajo lento.
+4. El browser **nunca llama a nuestro servidor para enterarse del
+   progreso**: se suscribe directo a Supabase Realtime (Postgres Changes)
+   sobre `agent_jobs`/`agent_job_events` con la key pública (`anon`), y
+   recibe los inserts/updates push apenas ocurren. Esto evita necesitar
+   WebSocket propio o polling desde Vercel.
+
+**Tablas** (`supabase/schema_agent_jobs.sql`): `agent_jobs` (uno por tarea
+lanzada) y `agent_job_events` (log de eventos de progreso). RLS: lectura
+pública (igual criterio que el resto del hub, uso personal), escritura solo
+vía `service_role` desde las API routes. Agregadas a la publicación
+`supabase_realtime` para que el Realtime funcione.
+
+**Nota de mantenimiento importante:** el payload exacto de `POST
+/conversations` y el shape de los eventos de webhook pueden variar según
+la versión del Agent Server que se despliegue — el código usa los nombres
+de campo públicamente documentados (`initial_user_msg`, `repository`,
+`conversation_id`, `execution_status`) como punto de partida razonable, con
+fallbacks. Si algo no matchea, chequear el `/docs` (Swagger) del Agent
+Server real contra `app/api/openhands/start/route.ts` y
+`app/api/openhands/webhook/route.ts`.
+
+**Fuera de alcance de esta sesión:** correr el Agent Server en sí (requiere
+Docker + acceso a socket, no corre en Vercel) — eso lo administra el
+usuario en su propia infraestructura, apuntando su config `webhooks` a
+`https://spk-multidev.vercel.app/api/openhands/webhook`.
+
+## 21. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
