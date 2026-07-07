@@ -266,7 +266,26 @@ que la eliminación de repos en GitHub es irreversible (no existe papelera):
 - Requiere que el token de GitHub tenga scope `delete_repo` habilitado
   explícitamente (no viene por default con los scopes normales de push).
 
-## 16. Pendiente de definir en próxima sesión
+## 16. API keys por usuario y roles personalizables — RATIFICADA
+
+**API keys por usuario:** para que el hub sea distribuible sin atar a otras
+personas a las keys del dueño original del deploy, cada API route que llama
+a un proveedor de IA acepta un `apiKey` opcional en el body. Prioridad:
+key personal del usuario (cargada en su propio navegador vía localStorage,
+nunca enviada a Supabase ni persistida en el servidor) > key compartida del
+servidor (env var de Vercel). Si el usuario no carga ninguna, el hub sigue
+funcionando con la key del dueño — mantiene el modo de uso personal actual
+intacto mientras habilita distribución futura sin cambios de arquitectura.
+
+**Roles personalizables:** los 3 roles fijos (Arquitecto/Auditor/
+Implementador, sección 9) no se pueden editar, pero el usuario puede crear
+los propios (nombre + system prompt) desde el panel de Configuración.
+Guardados en localStorage — por ahora no sincronizan entre dispositivos
+(a diferencia del historial de chat, que sí vive en Supabase); si en el
+futuro se requiere que los roles también viajen entre iPad/PC, migrarían a
+una tabla de Supabase análoga a `sessions`.
+
+## 17. Pendiente de definir en próxima sesión
 
 - Nombre del proyecto.
 - Lista definitiva de proveedores/modelos a integrar en v1.

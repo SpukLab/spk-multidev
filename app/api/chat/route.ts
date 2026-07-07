@@ -7,10 +7,11 @@ import { ChatMessage } from "@/lib/adapters/types";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { provider, model, messages } = body as {
+    const { provider, model, messages, apiKey: clientApiKey } = body as {
       provider: string;
       model: string;
       messages: ChatMessage[];
+      apiKey?: string;
     };
 
     if (!provider || !model || !messages) {
@@ -20,10 +21,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const apiKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    // Prioridad: key personal del usuario (cargada en su navegador) > key del
+    // servidor. Esto permite distribuir el hub sin atar a otros a las keys
+    // del dueño original del deploy.
+    const apiKey = clientApiKey || process.env[`${provider.toUpperCase()}_API_KEY`];
     if (!apiKey) {
       return NextResponse.json(
-        { error: `No hay API key configurada para el proveedor: ${provider}` },
+        { error: `No hay API key configurada para el proveedor: ${provider}. Cargá la tuya en Configuración.` },
         { status: 500 }
       );
     }

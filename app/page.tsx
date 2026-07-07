@@ -6,9 +6,11 @@ import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { CleanupPanel } from "@/components/CleanupPanel";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
+import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
+import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
 
 interface PanelState {
   provider: string;
@@ -74,6 +76,16 @@ export default function HomePage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [apiKeys, setApiKeys] = useState<StoredApiKeys>({});
+  const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
+
+  useEffect(() => {
+    setApiKeys(loadApiKeys());
+    setCustomRoles(loadCustomRoles());
+  }, []);
+
+  const allRoles = [...defaultRoles, ...customRoles];
 
   async function handleLoadProject() {
     if (!owner || !repo) {
@@ -178,7 +190,7 @@ export default function HomePage() {
     setState({ ...state, messages: [...state.messages, userMsg], busy: true });
     persistMessage(panel, "user", text);
 
-    const roleDef = defaultRoles.find((r) => r.id === state.roleId);
+    const roleDef = allRoles.find((r) => r.id === state.roleId);
     const systemContent = [
       roleDef?.systemPrompt,
       contextText ? `Contexto del proyecto (${contextSource}):\n${contextText}` : null,
@@ -194,6 +206,7 @@ export default function HomePage() {
         body: JSON.stringify({
           provider: state.provider,
           model: state.model,
+          apiKey: apiKeys[state.provider as keyof StoredApiKeys],
           messages: [
             ...(systemContent ? [{ role: "system", content: systemContent }] : []),
             ...state.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -259,22 +272,44 @@ export default function HomePage() {
 
   return (
     <main style={{ padding: "16px", maxWidth: 1400, margin: "0 auto" }}>
-      <header style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0, fontSize: 20 }}>
-          <span style={{ color: "#fff", fontWeight: 800 }}>SPUK</span>
-          <span style={{ color: "var(--spk-cyan)", fontWeight: 300 }}>MultiDev</span>
-        </h1>
-        <p
+      <header
+        style={{
+          marginBottom: 14,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+        }}
+      >
+        <div>
+          <h1 style={{ margin: 0, fontSize: 20 }}>
+            <span style={{ color: "#fff", fontWeight: 800 }}>SPUK</span>
+            <span style={{ color: "var(--spk-cyan)", fontWeight: 300 }}>MultiDev</span>
+          </h1>
+          <p
+            style={{
+              margin: "4px 0 0 0",
+              fontSize: 11,
+              fontFamily: "var(--font-mono)",
+              fontStyle: "italic",
+              color: "var(--spk-text-dim)",
+            }}
+          >
+            Dual-panel · roles · Code Intake · push directo a GitHub
+          </p>
+        </div>
+        <button
+          onClick={() => setSettingsOpen(true)}
           style={{
-            margin: "4px 0 0 0",
+            background: "var(--spk-button-bg)",
+            border: "1px solid var(--spk-border)",
+            color: "var(--spk-active-fg)",
+            borderRadius: 6,
+            padding: "6px 10px",
             fontSize: 11,
-            fontFamily: "var(--font-mono)",
-            fontStyle: "italic",
-            color: "var(--spk-text-dim)",
           }}
         >
-          Dual-panel · roles · Code Intake · push directo a GitHub
-        </p>
+          ⚙ Configuración
+        </button>
       </header>
 
       <ProjectBar
@@ -306,6 +341,21 @@ export default function HomePage() {
         onDeleteSession={handleDeleteSession}
       />
 
+      <SettingsDrawer
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        apiKeys={apiKeys}
+        onSaveApiKeys={(keys) => {
+          setApiKeys(keys);
+          saveApiKeys(keys);
+        }}
+        customRoles={customRoles}
+        onSaveCustomRoles={(roles) => {
+          setCustomRoles(roles);
+          saveCustomRoles(roles);
+        }}
+      />
+
       <div className="tab-bar">
         {(["left", "right", "both"] as const).map((mode) => (
           <button
@@ -329,6 +379,8 @@ export default function HomePage() {
             roleId={left.roleId}
             busy={left.busy}
             collapsed={left.collapsed}
+            roles={allRoles}
+            apiKeys={apiKeys}
             onToggleCollapse={() => setLeft((s) => ({ ...s, collapsed: !s.collapsed }))}
             onChangeProvider={(p) =>
               setLeft((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
@@ -353,6 +405,8 @@ export default function HomePage() {
             roleId={right.roleId}
             busy={right.busy}
             collapsed={right.collapsed}
+            roles={allRoles}
+            apiKeys={apiKeys}
             onToggleCollapse={() => setRight((s) => ({ ...s, collapsed: !s.collapsed }))}
             onChangeProvider={(p) =>
               setRight((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))

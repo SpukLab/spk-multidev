@@ -5,13 +5,13 @@ import { getModelsForProvider } from "@/lib/providerModels";
 export async function POST(req: NextRequest) {
   let provider = "";
   try {
-    const body = (await req.json()) as { provider: string };
+    const body = (await req.json()) as { provider: string; apiKey?: string };
     provider = body.provider;
     if (!provider) {
       return NextResponse.json({ error: "Falta provider." }, { status: 400 });
     }
 
-    const apiKey = process.env[`${provider.toUpperCase()}_API_KEY`];
+    const apiKey = body.apiKey || process.env[`${provider.toUpperCase()}_API_KEY`];
     if (!apiKey) {
       // Sin key configurada: devolvemos el catálogo de fallback hardcodeado
       // en vez de fallar, para que la UI siga siendo usable.

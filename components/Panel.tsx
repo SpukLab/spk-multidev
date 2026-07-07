@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { providers, getModelsForProvider } from "@/lib/providerModels";
-import { defaultRoles } from "@/lib/roles";
+import { StoredApiKeys } from "@/lib/clientStorage";
+
+export interface RoleOption {
+  id: string;
+  label: string;
+  systemPrompt: string;
+}
 
 export interface PanelMessage {
   id: string;
@@ -25,6 +31,8 @@ interface PanelProps {
   roleId: string;
   busy: boolean;
   collapsed: boolean;
+  roles: RoleOption[];
+  apiKeys: StoredApiKeys;
   onToggleCollapse: () => void;
   onChangeProvider: (providerId: string) => void;
   onChangeModel: (modelId: string) => void;
@@ -42,6 +50,8 @@ export function Panel({
   roleId,
   busy,
   collapsed,
+  roles,
+  apiKeys,
   onToggleCollapse,
   onChangeProvider,
   onChangeModel,
@@ -69,7 +79,7 @@ export function Panel({
     fetch("/api/models", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider }),
+      body: JSON.stringify({ provider, apiKey: apiKeys[provider as keyof StoredApiKeys] }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -190,7 +200,7 @@ export function Panel({
         </select>
 
         <select value={roleId} onChange={(e) => onChangeRole(e.target.value)} style={selectStyle}>
-          {defaultRoles.map((r) => (
+          {roles.map((r) => (
             <option key={r.id} value={r.id}>
               {r.label}
             </option>
