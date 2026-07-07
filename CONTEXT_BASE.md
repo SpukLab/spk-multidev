@@ -322,8 +322,13 @@ contraseña ahora protege solo las acciones destructivas de limpieza.
 
 ## 19. Pendiente de definir en próxima sesión
 
-- Nombre del proyecto.
-- Lista definitiva de proveedores/modelos a integrar en v1.
-- Alcance de la función de "sandbox" dentro de la UI: ¿solo trigger de preview,
-  o también editor de código embebido?
-- Autenticación (¿uso personal único, o multi-usuario a futuro?).
+- PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
+- Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
+  Preview Deployment de Vercel + diff review, sin editor inline — decisión
+  original de la sección 2, revisar si sigue siendo suficiente con más uso).
+- Selector de proyecto/repo con historial de "recientes" (hoy hay que tipear
+  o usar "Buscar repos" cada vez, sin recordar el último usado).
+- Notificación/feedback visual cuando termina un Preview Deployment de Vercel
+  disparado por un commit del hub (hoy hay que ir a chequear a mano).
+- Roles personalizados sincronizados vía Supabase en vez de solo localStorage
+  (para que viajen entre iPad y PC, igual que el historial de chat).
