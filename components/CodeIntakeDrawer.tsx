@@ -20,6 +20,7 @@ interface CodeIntakeDrawerProps {
   onChangeOwner: (v: string) => void;
   onChangeRepo: (v: string) => void;
   onChangeBranch: (v: string) => void;
+  githubToken?: string;
 }
 
 export function CodeIntakeDrawer({
@@ -30,6 +31,7 @@ export function CodeIntakeDrawer({
   onChangeOwner,
   onChangeRepo,
   onChangeBranch,
+  githubToken,
 }: CodeIntakeDrawerProps) {
   const [resolved, setResolved] = useState<ResolvedFile[] | null>(null);
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export function CodeIntakeDrawer({
       const res = await fetch("/api/codeintake/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText, owner, repo, branch }),
+        body: JSON.stringify({ rawText, owner, repo, branch, githubToken }),
       });
       const data = await res.json();
       if (data.error) {
@@ -78,6 +80,7 @@ export function CodeIntakeDrawer({
           branch,
           message: commitMessage || "Code Intake: cambios aplicados desde SPK_MultiDev",
           files: validFiles.map((f) => ({ path: f.path, content: f.newContent })),
+          githubToken,
         }),
       });
       const data = await res.json();

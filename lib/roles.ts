@@ -48,3 +48,16 @@ REPLACE:
 Preferí ACTION: patch para cambios acotados dentro de archivos grandes existentes.
 No agregues explicaciones dentro de los bloques FILE — las explicaciones van afuera.
 `.trim();
+
+export const SEQUENTIAL_THINKING_INSTRUCTION = `
+Antes de dar tu respuesta final, pensá en voz alta paso a paso usando este formato:
+
+Pensamiento 1: <primer paso del razonamiento>
+Pensamiento 2: <siguiente paso, puede corregir o refinar el anterior>
+...
+Pensamiento N: <último paso>
+
+Respuesta final: <tu respuesta real y completa acá>
+
+Cada pensamiento debe ser breve y concreto. Si en un pensamiento posterior te das cuenta de que uno anterior estaba mal encaminado, decilo explícitamente y corregí el rumbo en vez de ignorarlo.
+`.trim();

@@ -7,21 +7,22 @@ import { fetchFileContent } from "@/lib/github/client";
 // adjunto automático").
 export async function POST(req: NextRequest) {
   try {
-    const { owner, repo, branch } = (await req.json()) as {
+    const { owner, repo, branch, githubToken } = (await req.json()) as {
       owner: string;
       repo: string;
       branch?: string;
+      githubToken?: string;
     };
     if (!owner || !repo) {
       return NextResponse.json({ error: "Faltan owner y repo." }, { status: 400 });
     }
 
     const ref = { owner, repo, branch };
-    let content = await fetchFileContent(ref, "CONTEXT_BASE.md");
+    let content = await fetchFileContent(ref, "CONTEXT_BASE.md", githubToken);
     let source = "CONTEXT_BASE.md";
 
     if (content === null) {
-      content = await fetchFileContent(ref, "README.md");
+      content = await fetchFileContent(ref, "README.md", githubToken);
       source = "README.md";
     }
 

@@ -19,7 +19,8 @@ export interface ResolvedFile {
  */
 export async function resolveInstructions(
   ref: RepoRef,
-  instructions: IntakeInstruction[]
+  instructions: IntakeInstruction[],
+  token?: string
 ): Promise<ResolvedFile[]> {
   const results: ResolvedFile[] = [];
 
@@ -36,7 +37,7 @@ export async function resolveInstructions(
     }
 
     if (instr.action === "write") {
-      const oldContent = await fetchFileContent(ref, instr.path);
+      const oldContent = await fetchFileContent(ref, instr.path, token);
       results.push({
         path: instr.path,
         action: "write",
@@ -47,7 +48,7 @@ export async function resolveInstructions(
     }
 
     if (instr.action === "delete") {
-      const oldContent = await fetchFileContent(ref, instr.path);
+      const oldContent = await fetchFileContent(ref, instr.path, token);
       results.push({
         path: instr.path,
         action: "delete",
@@ -68,7 +69,7 @@ export async function resolveInstructions(
         });
         continue;
       }
-      const oldContent = await fetchFileContent(ref, instr.fromPath);
+      const oldContent = await fetchFileContent(ref, instr.fromPath, token);
       results.push({
         path: instr.fromPath,
         action: "delete",
@@ -86,7 +87,7 @@ export async function resolveInstructions(
     }
 
     if (instr.action === "patch") {
-      const oldContent = await fetchFileContent(ref, instr.path);
+      const oldContent = await fetchFileContent(ref, instr.path, token);
       if (oldContent === null) {
         results.push({
           path: instr.path,

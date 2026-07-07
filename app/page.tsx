@@ -7,7 +7,7 @@ import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
-import { defaultRoles, CODE_INTAKE_INSTRUCTION } from "@/lib/roles";
+import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
 
@@ -18,6 +18,7 @@ interface PanelState {
   messages: PanelMessage[];
   busy: boolean;
   collapsed: boolean;
+  sequentialThinking: boolean;
 }
 
 interface SessionSummary {
@@ -34,7 +35,15 @@ interface StoredMessage {
 }
 
 function initialPanelState(provider: string, model: string): PanelState {
-  return { provider, model, roleId: "none", messages: [], busy: false, collapsed: false };
+  return {
+    provider,
+    model,
+    roleId: "none",
+    messages: [],
+    busy: false,
+    collapsed: false,
+    sequentialThinking: false,
+  };
 }
 
 let idCounter = 0;
@@ -114,7 +123,7 @@ export default function HomePage() {
       const ctxRes = await fetch("/api/github/context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, repo, branch }),
+        body: JSON.stringify({ owner, repo, branch, githubToken: apiKeys.github }),
       });
       const ctxData = await ctxRes.json();
       setContextText(ctxData.content ?? "");
@@ -192,6 +201,7 @@ export default function HomePage() {
     const roleDef = allRoles.find((r) => r.id === state.roleId);
     const systemContent = [
       roleDef?.systemPrompt,
+      state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
       contextText ? `Contexto del proyecto (${contextSource}):\n${contextText}` : null,
       CODE_INTAKE_INSTRUCTION,
     ]
@@ -328,6 +338,7 @@ export default function HomePage() {
         onToggleContextExpanded={() => setContextExpanded((v) => !v)}
         sessionsCount={sessions.length}
         onOpenChats={() => setChatsDrawerOpen(true)}
+        githubToken={apiKeys.github}
       />
 
       <ChatsDrawer
@@ -383,6 +394,10 @@ export default function HomePage() {
             collapsed={left.collapsed}
             roles={allRoles}
             apiKeys={apiKeys}
+            sequentialThinking={left.sequentialThinking}
+            onToggleSequentialThinking={() =>
+              setLeft((s) => ({ ...s, sequentialThinking: !s.sequentialThinking }))
+            }
             onToggleCollapse={() => setLeft((s) => ({ ...s, collapsed: !s.collapsed }))}
             onChangeProvider={(p) =>
               setLeft((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
@@ -409,6 +424,10 @@ export default function HomePage() {
             collapsed={right.collapsed}
             roles={allRoles}
             apiKeys={apiKeys}
+            sequentialThinking={right.sequentialThinking}
+            onToggleSequentialThinking={() =>
+              setRight((s) => ({ ...s, sequentialThinking: !s.sequentialThinking }))
+            }
             onToggleCollapse={() => setRight((s) => ({ ...s, collapsed: !s.collapsed }))}
             onChangeProvider={(p) =>
               setRight((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
@@ -430,6 +449,7 @@ export default function HomePage() {
         onChangeOwner={setOwner}
         onChangeRepo={setRepo}
         onChangeBranch={setBranch}
+        githubToken={apiKeys.github}
       />
 
     </main>

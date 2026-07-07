@@ -33,6 +33,8 @@ interface PanelProps {
   collapsed: boolean;
   roles: RoleOption[];
   apiKeys: StoredApiKeys;
+  sequentialThinking: boolean;
+  onToggleSequentialThinking: () => void;
   onToggleCollapse: () => void;
   onChangeProvider: (providerId: string) => void;
   onChangeModel: (modelId: string) => void;
@@ -52,6 +54,8 @@ export function Panel({
   collapsed,
   roles,
   apiKeys,
+  sequentialThinking,
+  onToggleSequentialThinking,
   onToggleCollapse,
   onChangeProvider,
   onChangeModel,
@@ -206,6 +210,15 @@ export function Panel({
             </option>
           ))}
         </select>
+
+        <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--spk-text-dim)" }}>
+          <input
+            type="checkbox"
+            checked={sequentialThinking}
+            onChange={onToggleSequentialThinking}
+          />
+          Pensamiento secuencial
+        </label>
       </div>
 
       {collapsed && catalogWarning && (

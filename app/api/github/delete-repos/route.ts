@@ -7,10 +7,11 @@ import { deleteRepo } from "@/lib/github/client";
 // (CONTEXT_BASE.md sección 15).
 export async function POST(req: NextRequest) {
   try {
-    const { repos, confirmText, password } = (await req.json()) as {
+    const { repos, confirmText, password, githubToken } = (await req.json()) as {
       repos: { owner: string; name: string }[];
       confirmText: string;
       password?: string;
+      githubToken?: string;
     };
 
     const expectedPassword = process.env.HUB_ACCESS_PASSWORD;
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
     const results: { repo: string; ok: boolean; error?: string }[] = [];
     for (const r of repos) {
       try {
-        await deleteRepo(r.owner, r.name);
+        await deleteRepo(r.owner, r.name, githubToken);
         results.push({ repo: r.name, ok: true });
       } catch (err: unknown) {
         results.push({

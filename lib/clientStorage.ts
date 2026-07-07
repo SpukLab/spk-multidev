@@ -5,6 +5,7 @@ export interface StoredApiKeys {
   nvidia?: string;
   anthropic?: string;
   openai?: string;
+  github?: string;
 }
 
 /**

@@ -3,12 +3,13 @@ import { commitFiles } from "@/lib/github/client";
 
 export async function POST(req: NextRequest) {
   try {
-    const { owner, repo, branch, paths, password } = (await req.json()) as {
+    const { owner, repo, branch, paths, password, githubToken } = (await req.json()) as {
       owner: string;
       repo: string;
       branch?: string;
       paths: string[];
       password?: string;
+      githubToken?: string;
     };
 
     const expectedPassword = process.env.HUB_ACCESS_PASSWORD;
@@ -27,7 +28,8 @@ export async function POST(req: NextRequest) {
     const commitSha = await commitFiles(
       { owner, repo, branch },
       files,
-      `Limpieza masiva: borrado de ${paths.length} archivo(s) desde SPK_MultiDev`
+      `Limpieza masiva: borrado de ${paths.length} archivo(s) desde SPK_MultiDev`,
+      githubToken
     );
 
     return NextResponse.json({ commitSha });

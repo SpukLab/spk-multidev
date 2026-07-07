@@ -290,7 +290,37 @@ Guardados en localStorage — por ahora no sincronizan entre dispositivos
 futuro se requiere que los roles también viajen entre iPad/PC, migrarían a
 una tabla de Supabase análoga a `sessions`.
 
-## 17. Pendiente de definir en próxima sesión
+## 18. Ampliaciones de sesión (GitHub BYOK, pensamiento secuencial, árbol de archivos) — RATIFICADA
+
+**GitHub token por usuario**: se extiende el patrón de API keys por usuario
+(sección 16) a GitHub. Cada función de `lib/github/client.ts` acepta un
+`token` opcional; todas las API routes de GitHub aceptan `githubToken` en
+el body y lo priorizan sobre `GITHUB_TOKEN` del servidor. `/api/github/repos`
+pasó de GET a POST para poder llevar el token en el body.
+
+**Pensamiento secuencial (versión liviana)**: checkbox por panel que agrega
+una instrucción de sistema pidiendo razonamiento explícito en pasos
+numerados antes de la respuesta final. Es una versión "prompteada", no el
+protocolo real de tool-calling iterativo del MCP server homónimo (que
+requeriría soporte de function-calling y un loop agéntico en `/api/chat`,
+inexistente hoy). Documentado como decisión consciente de alcance — si en
+el futuro se necesita el protocolo completo, es una pieza de arquitectura
+nueva, no una extensión menor.
+
+**Árbol de archivos en limpieza masiva**: el listado plano de paths del
+Nivel 1 (sección 15) se reemplaza por un árbol de carpetas colapsable
+(`components/FileTree.tsx`), con selección a nivel de carpeta (selecciona/
+deselecciona todos los archivos descendientes).
+
+**Buscador de repos en la barra de proyecto**: botón "Buscar repos" que
+lista los repos de la cuenta (reutiliza `listAccountRepos`) para completar
+owner/repo con un tap en vez de tipearlo a mano.
+
+**Auth revisada (correción de sesión anterior)**: la sección 11 quedó
+desactualizada tras remover el Basic Auth global — ver nota ahí: la
+contraseña ahora protege solo las acciones destructivas de limpieza.
+
+## 19. Pendiente de definir en próxima sesión
 
 - Nombre del proyecto.
 - Lista definitiva de proveedores/modelos a integrar en v1.

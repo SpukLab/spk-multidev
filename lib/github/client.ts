@@ -7,10 +7,10 @@ export interface RepoRef {
   branch?: string; // default: rama por defecto del repo
 }
 
-function getOctokit(): Octokit {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("GITHUB_TOKEN no configurado.");
-  return new Octokit({ auth: token });
+function getOctokit(token?: string): Octokit {
+  const t = token || process.env.GITHUB_TOKEN;
+  if (!t) throw new Error("GITHUB_TOKEN no configurado (ni personal ni del servidor).");
+  return new Octokit({ auth: t });
 }
 
 /**
@@ -21,9 +21,10 @@ function getOctokit(): Octokit {
  */
 export async function fetchFileContent(
   ref: RepoRef,
-  path: string
+  path: string,
+  token?: string
 ): Promise<string | null> {
-  const octokit = getOctokit();
+  const octokit = getOctokit(token);
   try {
     const res = await octokit.repos.getContent({
       owner: ref.owner,
@@ -53,10 +54,11 @@ export async function fetchFileContent(
 export async function commitFiles(
   ref: RepoRef,
   resolvedFiles: { path: string; content: string | null }[], // content null = delete
-  message: string
+  message: string,
+  token?: string
 ): Promise<string> {
-  const octokit = getOctokit();
-  const branch = ref.branch ?? (await getDefaultBranch(ref));
+  const octokit = getOctokit(token);
+  const branch = ref.branch ?? (await getDefaultBranch(ref, token));
 
   const { data: refData } = await octokit.git.getRef({
     owner: ref.owner,
@@ -119,9 +121,9 @@ export async function commitFiles(
  * no reescribe historia de otros colaboradores porque el repo es de uso
  * individual.
  */
-export async function undoLastPush(ref: RepoRef): Promise<void> {
-  const octokit = getOctokit();
-  const branch = ref.branch ?? (await getDefaultBranch(ref));
+export async function undoLastPush(ref: RepoRef, token?: string): Promise<void> {
+  const octokit = getOctokit(token);
+  const branch = ref.branch ?? (await getDefaultBranch(ref, token));
 
   const { data: refData } = await octokit.git.getRef({
     owner: ref.owner,
@@ -146,8 +148,8 @@ export async function undoLastPush(ref: RepoRef): Promise<void> {
   });
 }
 
-async function getDefaultBranch(ref: RepoRef): Promise<string> {
-  const octokit = getOctokit();
+async function getDefaultBranch(ref: RepoRef, token?: string): Promise<string> {
+  const octokit = getOctokit(token);
   const { data } = await octokit.repos.get({ owner: ref.owner, repo: ref.repo });
   return data.default_branch;
 }
@@ -156,9 +158,9 @@ async function getDefaultBranch(ref: RepoRef): Promise<string> {
  * Lista todos los archivos del repo (recursivo) — usado por el Nivel 1 de
  * limpieza masiva (sección 15): borrado de archivos sueltos dentro de un repo.
  */
-export async function listRepoTree(ref: RepoRef): Promise<string[]> {
-  const octokit = getOctokit();
-  const branch = ref.branch ?? (await getDefaultBranch(ref));
+export async function listRepoTree(ref: RepoRef, token?: string): Promise<string[]> {
+  const octokit = getOctokit(token);
+  const branch = ref.branch ?? (await getDefaultBranch(ref, token));
 
   const { data: refData } = await octokit.git.getRef({
     owner: ref.owner,
@@ -187,10 +189,11 @@ export interface RepoSummary {
 
 /**
  * Lista todos los repos de la cuenta con fecha del último commit — usado
- * por el Nivel 2 de limpieza masiva (borrado de repos completos, sección 15).
+ * por el Nivel 2 de limpieza masiva (borrado de repos completos, sección 15)
+ * y por el buscador de repos en la barra de proyecto.
  */
-export async function listAccountRepos(): Promise<RepoSummary[]> {
-  const octokit = getOctokit();
+export async function listAccountRepos(token?: string): Promise<RepoSummary[]> {
+  const octokit = getOctokit(token);
   const { data } = await octokit.repos.listForAuthenticatedUser({
     per_page: 100,
     sort: "updated",
@@ -210,11 +213,10 @@ export async function listAccountRepos(): Promise<RepoSummary[]> {
  * El llamador es responsable de exigir la confirmación reforzada antes de
  * invocar esto (tipear el nombre exacto del repo).
  */
-export async function deleteRepo(owner: string, repo: string): Promise<void> {
-  const octokit = getOctokit();
+export async function deleteRepo(owner: string, repo: string, token?: string): Promise<void> {
+  const octokit = getOctokit(token);
   await octokit.repos.delete({ owner, repo });
 }
 
 // Re-exportado para uso en API routes que resuelven instrucciones de intake.
 export type { IntakeInstruction };
-

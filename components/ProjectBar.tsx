@@ -1,5 +1,13 @@
 "use client";
 
+import { useState } from "react";
+
+interface RepoOption {
+  owner: string;
+  name: string;
+  lastCommitDate: string | null;
+}
+
 interface ProjectBarProps {
   owner: string;
   repo: string;
@@ -17,6 +25,7 @@ interface ProjectBarProps {
   onToggleContextExpanded: () => void;
   sessionsCount: number;
   onOpenChats: () => void;
+  githubToken?: string;
 }
 
 export function ProjectBar({
@@ -36,7 +45,30 @@ export function ProjectBar({
   onToggleContextExpanded,
   sessionsCount,
   onOpenChats,
+  githubToken,
 }: ProjectBarProps) {
+  const [repoPickerOpen, setRepoPickerOpen] = useState(false);
+  const [repoOptions, setRepoOptions] = useState<RepoOption[] | null>(null);
+  const [repoPickerLoading, setRepoPickerLoading] = useState(false);
+
+  async function handleOpenRepoPicker() {
+    setRepoPickerOpen(true);
+    if (repoOptions) return; // ya cargado
+    setRepoPickerLoading(true);
+    try {
+      const res = await fetch("/api/github/repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ githubToken }),
+      });
+      const data = await res.json();
+      setRepoOptions(data.repos ?? []);
+    } catch {
+      setRepoOptions([]);
+    } finally {
+      setRepoPickerLoading(false);
+    }
+  }
   return (
     <section
       style={{
@@ -71,10 +103,59 @@ export function ProjectBar({
           {loading ? "Cargando..." : "Cargar proyecto"}
         </button>
 
+        <button onClick={handleOpenRepoPicker} style={buttonStyle}>
+          Buscar repos
+        </button>
+
         <button onClick={onOpenChats} style={buttonStyle}>
           Chats ({sessionsCount})
         </button>
       </div>
+
+      {repoPickerOpen && (
+        <div
+          style={{
+            marginTop: 8,
+            maxHeight: 200,
+            overflowY: "auto",
+            border: "1px solid var(--spk-border)",
+            borderRadius: 8,
+            padding: 6,
+          }}
+        >
+          {repoPickerLoading && (
+            <p style={{ fontSize: 11, color: "var(--spk-text-dim)" }}>Cargando repos...</p>
+          )}
+          {repoOptions?.map((r) => (
+            <button
+              key={`${r.owner}/${r.name}`}
+              onClick={() => {
+                onChangeOwner(r.owner);
+                onChangeRepo(r.name);
+                setRepoPickerOpen(false);
+              }}
+              style={{
+                display: "block",
+                width: "100%",
+                textAlign: "left",
+                background: "transparent",
+                border: "none",
+                color: "var(--spk-text)",
+                fontSize: 11,
+                padding: "4px 2px",
+              }}
+            >
+              {r.owner}/{r.name}{" "}
+              <span style={{ color: "var(--spk-text-dim)" }}>
+                ({r.lastCommitDate ? new Date(r.lastCommitDate).toLocaleDateString("es-AR") : "sin commits"})
+              </span>
+            </button>
+          ))}
+          {repoOptions?.length === 0 && (
+            <p style={{ fontSize: 11, color: "var(--spk-text-dim)" }}>No se encontraron repos.</p>
+          )}
+        </div>
+      )}
 
       {projectStatus && (
         <p style={{ fontSize: 11, color: "var(--spk-text-dim)", marginTop: 6 }}>{projectStatus}</p>

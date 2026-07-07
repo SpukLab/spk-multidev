@@ -171,6 +171,15 @@ export function SettingsDrawer({
               style={inputStyle}
             />
 
+            <label style={labelStyle}>GitHub (token personal)</label>
+            <input
+              type="password"
+              value={localKeys.github ?? ""}
+              onChange={(e) => setLocalKeys({ ...localKeys, github: e.target.value })}
+              placeholder="Token personal (opcional, requiere scope repo)"
+              style={inputStyle}
+            />
+
             <button onClick={handleSaveKeys} style={{ ...primaryButtonStyle, marginTop: 10 }}>
               Guardar keys
             </button>
@@ -248,7 +257,7 @@ export function SettingsDrawer({
 
         {tab === "cleanup" && (
           <div style={{ marginTop: 12 }}>
-            <CleanupPanel owner={owner} repo={repo} branch={branch} />
+            <CleanupPanel owner={owner} repo={repo} branch={branch} githubToken={apiKeys.github} />
           </div>
         )}
       </div>

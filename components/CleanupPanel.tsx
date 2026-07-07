@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FileTree } from "./FileTree";
 
 interface RepoSummary {
   owner: string;
@@ -13,10 +14,12 @@ export function CleanupPanel({
   owner,
   repo,
   branch,
+  githubToken,
 }: {
   owner: string;
   repo: string;
   branch: string;
+  githubToken?: string;
 }) {
   const [tab, setTab] = useState<"files" | "repos">("files");
 
@@ -45,7 +48,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/tree", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, repo, branch }),
+        body: JSON.stringify({ owner, repo, branch, githubToken }),
       });
       const data = await res.json();
       if (data.error) {
@@ -69,7 +72,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/bulk-delete-files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, repo, branch, paths: Array.from(selectedFiles), password }),
+        body: JSON.stringify({ owner, repo, branch, paths: Array.from(selectedFiles), password, githubToken }),
       });
       const data = await res.json();
       if (data.error) {
@@ -90,7 +93,11 @@ export function CleanupPanel({
     setReposLoading(true);
     setReposStatus(null);
     try {
-      const res = await fetch("/api/github/repos");
+      const res = await fetch("/api/github/repos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ githubToken }),
+      });
       const data = await res.json();
       if (data.error) {
         setReposStatus(`Error: ${data.error}`);
@@ -125,7 +132,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/delete-repos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repos: reposToDelete, confirmText, password }),
+        body: JSON.stringify({ repos: reposToDelete, confirmText, password, githubToken }),
       });
       const data = await res.json();
       if (data.error) {
@@ -203,32 +210,8 @@ export function CleanupPanel({
               </button>
 
               {files && (
-                <div style={{ marginTop: 8, maxHeight: 260, overflowY: "auto" }}>
-                  {files.map((f) => (
-                    <label
-                      key={f}
-                      style={{
-                        display: "flex",
-                        gap: 6,
-                        alignItems: "center",
-                        fontSize: 11,
-                        fontFamily: "var(--font-mono)",
-                        padding: "3px 0",
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selectedFiles.has(f)}
-                        onChange={(e) => {
-                          const next = new Set(selectedFiles);
-                          if (e.target.checked) next.add(f);
-                          else next.delete(f);
-                          setSelectedFiles(next);
-                        }}
-                      />
-                      {f}
-                    </label>
-                  ))}
+                <div style={{ marginTop: 8, maxHeight: 300, overflowY: "auto" }}>
+                  <FileTree paths={files} selected={selectedFiles} onChangeSelected={setSelectedFiles} />
                 </div>
               )}
 

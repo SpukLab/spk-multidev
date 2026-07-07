@@ -12,9 +12,10 @@ ratificadas — es la fuente de verdad de este proyecto.
 
 Implementado: dual-panel con pestañas (mobile-friendly), catálogo dinámico
 de modelos, Code Intake (parser + diff real + commit), contexto de proyecto
-automático, drawer de chats (buscador, agrupado por fecha, borrado por ítem)
-persistidos en Supabase, auth propia (Basic Auth) delante de todo el hub, y
-limpieza masiva (archivos sueltos de un repo o repos completos).
+automático, drawer de chats, drawer de Configuración (API keys por usuario
+incluyendo GitHub, roles personalizables, limpieza masiva con árbol de
+archivos), pensamiento secuencial (versión prompteada), buscador de repos,
+y persistencia en Supabase. Auth solo en acciones destructivas de limpieza.
 
 Pendiente: selector de proyecto/repo con UI más rica (hoy son inputs de
 texto planos).
