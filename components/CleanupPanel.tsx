@@ -18,7 +18,6 @@ export function CleanupPanel({
   repo: string;
   branch: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<"files" | "repos">("files");
 
   // Nivel 1: archivos
@@ -33,6 +32,7 @@ export function CleanupPanel({
   const [reposLoading, setReposLoading] = useState(false);
   const [reposStatus, setReposStatus] = useState<string | null>(null);
   const [confirmText, setConfirmText] = useState("");
+  const [password, setPassword] = useState("");
 
   async function loadFiles() {
     if (!owner || !repo) {
@@ -69,7 +69,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/bulk-delete-files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, repo, branch, paths: Array.from(selectedFiles) }),
+        body: JSON.stringify({ owner, repo, branch, paths: Array.from(selectedFiles), password }),
       });
       const data = await res.json();
       if (data.error) {
@@ -125,7 +125,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/delete-repos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repos: reposToDelete, confirmText }),
+        body: JSON.stringify({ repos: reposToDelete, confirmText, password }),
       });
       const data = await res.json();
       if (data.error) {
@@ -157,27 +157,30 @@ export function CleanupPanel({
         borderRadius: 14,
         background: "linear-gradient(155deg,#13111f,#1b1726)",
         padding: 12,
-        marginTop: 14,
-        boxShadow: "0 0 24px var(--spk-glow)",
       }}
     >
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        style={{
-          background: "transparent",
-          border: "none",
-          color: "var(--spk-active-fg)",
-          fontFamily: "var(--font-mono)",
-          fontStyle: "italic",
-          fontSize: 12,
-          padding: 0,
-        }}
-      >
-        {expanded ? "▾" : "▸"} Limpieza masiva
-      </button>
+      <div style={{ marginTop: 0 }}>
+          <div style={{ marginBottom: 10 }}>
+            <p style={{ fontSize: 11, color: "var(--spk-text-dim)", marginBottom: 4 }}>
+              Contraseña de la app (solo se pide para acciones destructivas):
+            </p>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Contraseña"
+              style={{
+                width: "100%",
+                background: "var(--spk-button-bg)",
+                border: "1px solid var(--spk-border)",
+                color: "var(--spk-text)",
+                borderRadius: 6,
+                padding: "6px 8px",
+                fontSize: 12,
+              }}
+            />
+          </div>
 
-      {expanded && (
-        <div style={{ marginTop: 10 }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
             <button
               onClick={() => setTab("files")}
@@ -232,8 +235,8 @@ export function CleanupPanel({
               {selectedFiles.size > 0 && (
                 <button
                   onClick={handleDeleteFiles}
-                  disabled={filesLoading}
-                  style={{ ...dangerButtonStyle, marginTop: 8 }}
+                  disabled={filesLoading || !password}
+                  style={{ ...dangerButtonStyle, marginTop: 8, opacity: !password ? 0.4 : 1 }}
                 >
                   Borrar {selectedFiles.size} archivo(s) seleccionado(s) (1 commit)
                 </button>
@@ -309,11 +312,11 @@ export function CleanupPanel({
                   />
                   <button
                     onClick={handleDeleteRepos}
-                    disabled={reposLoading || confirmText !== expectedConfirm}
+                    disabled={reposLoading || confirmText !== expectedConfirm || !password}
                     style={{
                       ...dangerButtonStyle,
                       marginTop: 6,
-                      opacity: confirmText !== expectedConfirm ? 0.4 : 1,
+                      opacity: confirmText !== expectedConfirm || !password ? 0.4 : 1,
                     }}
                   >
                     Borrar {selectedRepos.size} repo(s) permanentemente
@@ -326,8 +329,7 @@ export function CleanupPanel({
               )}
             </div>
           )}
-        </div>
-      )}
+      </div>
     </section>
   );
 }

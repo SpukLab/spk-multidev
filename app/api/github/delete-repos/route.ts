@@ -7,10 +7,16 @@ import { deleteRepo } from "@/lib/github/client";
 // (CONTEXT_BASE.md sección 15).
 export async function POST(req: NextRequest) {
   try {
-    const { repos, confirmText } = (await req.json()) as {
+    const { repos, confirmText, password } = (await req.json()) as {
       repos: { owner: string; name: string }[];
       confirmText: string;
+      password?: string;
     };
+
+    const expectedPassword = process.env.HUB_ACCESS_PASSWORD;
+    if (expectedPassword && password !== expectedPassword) {
+      return NextResponse.json({ error: "Contraseña incorrecta." }, { status: 401 });
+    }
 
     if (!repos || repos.length === 0) {
       return NextResponse.json({ error: "No hay repos seleccionados." }, { status: 400 });

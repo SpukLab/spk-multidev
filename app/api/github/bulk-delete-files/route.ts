@@ -3,12 +3,19 @@ import { commitFiles } from "@/lib/github/client";
 
 export async function POST(req: NextRequest) {
   try {
-    const { owner, repo, branch, paths } = (await req.json()) as {
+    const { owner, repo, branch, paths, password } = (await req.json()) as {
       owner: string;
       repo: string;
       branch?: string;
       paths: string[];
+      password?: string;
     };
+
+    const expectedPassword = process.env.HUB_ACCESS_PASSWORD;
+    if (expectedPassword && password !== expectedPassword) {
+      return NextResponse.json({ error: "Contraseña incorrecta." }, { status: 401 });
+    }
+
     if (!owner || !repo || !paths || paths.length === 0) {
       return NextResponse.json(
         { error: "Faltan owner, repo o paths." },

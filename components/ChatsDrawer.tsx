@@ -62,7 +62,7 @@ export function ChatsDrawer({
         background: "rgba(0,0,0,0.6)",
         zIndex: 50,
         display: "flex",
-        justifyContent: "flex-end",
+        justifyContent: "flex-start",
       }}
       onClick={onClose}
     >
@@ -72,7 +72,7 @@ export function ChatsDrawer({
           width: "min(360px, 92vw)",
           height: "100%",
           background: "linear-gradient(155deg,#13111f,#1b1726)",
-          borderLeft: "1px solid var(--spk-border)",
+          borderRight: "1px solid var(--spk-border)",
           padding: 14,
           overflowY: "auto",
         }}

@@ -180,10 +180,13 @@ búsqueda de bugs, que es un uso frecuente y crítico.
 Principio: anticipar fricciones reales de uso diario antes de construir, para
 evitar retomes evitables.
 
-- **Auth delante del hub.** La app queda en una URL pública de Vercel; sin
-  protección, cualquiera que la encuentre podría pegarle a las API routes y
-  quemar las keys (NVIDIA, etc.). Se agrega autenticación simple
-  (password/token propio) delante de toda la app — no opcional.
+- **Auth solo en acciones destructivas (revisado).** Se descartó el Basic
+  Auth global delante de todo el hub (generaba fricción innecesaria en el
+  uso diario de chat/Code Intake, que no son irreversibles). En su lugar,
+  la contraseña (`HUB_ACCESS_PASSWORD`) se exige únicamente en las dos
+  acciones de limpieza masiva (borrado de archivos y de repos completos,
+  sección 15/16) — validada server-side en esas API routes puntuales. El
+  resto del hub queda sin gate de login.
 - **Selector de proyecto/repo.** El hub no asume un solo repo. Desde el
   arranque hay un selector que apunta a cualquiera de los repos existentes
   (SBO, Sound Forge, SPK_FieldsSet, ChronoMed, AgroTrack, etc.) o a uno nuevo.
@@ -243,8 +246,10 @@ del resto del catálogo).
 - OpenAI (ChatGPT).
 - Adapters adicionales se suman después sin tocar el resto del hub.
 
-**Función de limpieza masiva** — dos niveles, con seguridad reforzada dado
-que la eliminación de repos en GitHub es irreversible (no existe papelera):
+**Función de limpieza masiva** — vive dentro del drawer de Configuración
+(pestaña "Limpieza"), no como sección separada. Ambas acciones exigen la
+contraseña de la app (`HUB_ACCESS_PASSWORD`), validada server-side — es la
+única parte del hub que pide contraseña (sección 11 revisada). Dos niveles:
 
 **Nivel 1 — Borrado masivo de archivos dentro de un repo:**
 - Vista de árbol del repo activo con selección múltiple (checkboxes).

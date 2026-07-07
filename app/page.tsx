@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Panel, PanelMessage } from "@/components/Panel";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
-import { CleanupPanel } from "@/components/CleanupPanel";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
@@ -354,6 +353,9 @@ export default function HomePage() {
           setCustomRoles(roles);
           saveCustomRoles(roles);
         }}
+        owner={owner}
+        repo={repo}
+        branch={branch}
       />
 
       <div className="tab-bar">
@@ -430,7 +432,6 @@ export default function HomePage() {
         onChangeBranch={setBranch}
       />
 
-      <CleanupPanel owner={owner} repo={repo} branch={branch} />
     </main>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { StoredApiKeys, CustomRole } from "@/lib/clientStorage";
+import { CleanupPanel } from "./CleanupPanel";
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -10,6 +11,9 @@ interface SettingsDrawerProps {
   onSaveApiKeys: (keys: StoredApiKeys) => void;
   customRoles: CustomRole[];
   onSaveCustomRoles: (roles: CustomRole[]) => void;
+  owner: string;
+  repo: string;
+  branch: string;
 }
 
 export function SettingsDrawer({
@@ -19,8 +23,11 @@ export function SettingsDrawer({
   onSaveApiKeys,
   customRoles,
   onSaveCustomRoles,
+  owner,
+  repo,
+  branch,
 }: SettingsDrawerProps) {
-  const [tab, setTab] = useState<"keys" | "roles">("keys");
+  const [tab, setTab] = useState<"keys" | "roles" | "cleanup">("keys");
   const [localKeys, setLocalKeys] = useState<StoredApiKeys>(apiKeys);
   const [newRoleLabel, setNewRoleLabel] = useState("");
   const [newRolePrompt, setNewRolePrompt] = useState("");
@@ -76,7 +83,7 @@ export function SettingsDrawer({
         background: "rgba(0,0,0,0.6)",
         zIndex: 50,
         display: "flex",
-        justifyContent: "flex-end",
+        justifyContent: "flex-start",
       }}
       onClick={onClose}
     >
@@ -86,7 +93,7 @@ export function SettingsDrawer({
           width: "min(400px, 92vw)",
           height: "100%",
           background: "linear-gradient(155deg,#13111f,#1b1726)",
-          borderLeft: "1px solid var(--spk-border)",
+          borderRight: "1px solid var(--spk-border)",
           padding: 14,
           overflowY: "auto",
         }}
@@ -120,6 +127,12 @@ export function SettingsDrawer({
             style={{ ...tabButtonStyle, ...(tab === "roles" ? tabButtonActiveStyle : {}) }}
           >
             Roles
+          </button>
+          <button
+            onClick={() => setTab("cleanup")}
+            style={{ ...tabButtonStyle, ...(tab === "cleanup" ? tabButtonActiveStyle : {}) }}
+          >
+            Limpieza
           </button>
         </div>
 
@@ -230,6 +243,12 @@ export function SettingsDrawer({
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === "cleanup" && (
+          <div style={{ marginTop: 12 }}>
+            <CleanupPanel owner={owner} repo={repo} branch={branch} />
           </div>
         )}
       </div>
