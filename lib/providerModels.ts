@@ -21,9 +21,9 @@ export const providers: ProviderConfig[] = [
   {
     id: "nvidia",
     label: "NVIDIA NIM",
-    preferredKeyword: "nemotron",
+    preferredKeyword: "nano-omni",
     models: [
-      { id: "nvidia/llama-3.3-nemotron-super-49b-v1", label: "Nemotron Super 49B" },
+      { id: "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", label: "Nemotron Nano 3 Omni" },
       { id: "deepseek-ai/deepseek-r1", label: "DeepSeek R1" },
       { id: "meta/llama-3.1-405b-instruct", label: "Llama 3.1 405B" },
     ],

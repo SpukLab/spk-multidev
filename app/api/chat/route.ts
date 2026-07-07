@@ -29,7 +29,22 @@ export async function POST(req: NextRequest) {
     }
 
     const adapter = getAdapter(provider);
-    const response = await adapter.sendMessage({ model, messages, apiKey });
+
+    let response;
+    try {
+      response = await adapter.sendMessage({ model, messages, apiKey });
+    } catch (firstErr: unknown) {
+      const msg = firstErr instanceof Error ? firstErr.message : "";
+      // 503 / rate-limit del proveedor: suele ser transitorio bajo tráfico
+      // compartido (ej. tier gratuito de NIM) — un reintento corto alcanza
+      // en la mayoría de los casos, sin necesidad de que el usuario reintente a mano.
+      if (msg.includes("503") || msg.toLowerCase().includes("resourceexhausted")) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        response = await adapter.sendMessage({ model, messages, apiKey });
+      } else {
+        throw firstErr;
+      }
+    }
 
     return NextResponse.json(response);
   } catch (err: unknown) {

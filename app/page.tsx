@@ -41,9 +41,11 @@ function nextId() {
 
 export default function HomePage() {
   const [left, setLeft] = useState<PanelState>(
-    initialPanelState("nvidia", "nvidia/llama-3.3-nemotron-super-49b-v1")
+    initialPanelState("nvidia", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
   );
-  const [right, setRight] = useState<PanelState>(initialPanelState("openai", "gpt-4o"));
+  const [right, setRight] = useState<PanelState>(
+    initialPanelState("nvidia", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
+  );
 
   const [intakeRawText, setIntakeRawText] = useState("");
   const [owner, setOwner] = useState("SpukLab");
