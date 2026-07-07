@@ -10,13 +10,14 @@ ratificadas — es la fuente de verdad de este proyecto.
 
 ## Estado
 
-Implementado: dual-panel con proveedor/modelo/rol independiente, catálogo
-dinámico de modelos por proveedor, Code Intake (parser + diff real + commit
-a GitHub), carga automática de contexto de proyecto (`CONTEXT_BASE.md`) y
-listado/persistencia de chats vía Supabase.
+Implementado: dual-panel con pestañas (mobile-friendly), catálogo dinámico
+de modelos, Code Intake (parser + diff real + commit), contexto de proyecto
+automático, chats persistidos en Supabase, **auth propia (Basic Auth) delante
+de todo el hub**, y **limpieza masiva** (archivos sueltos de un repo o repos
+completos, con confirmación reforzada para el borrado de repos).
 
-Pendiente: auth propia delante del hub, selector de proyecto/repo con UI más
-rica (hoy son inputs de texto), y las funciones de limpieza masiva (sección 15).
+Pendiente: selector de proyecto/repo con UI más rica (hoy son inputs de
+texto planos).
 
 ## Stack
 

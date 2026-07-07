@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Panel, PanelMessage } from "@/components/Panel";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
+import { CleanupPanel } from "@/components/CleanupPanel";
 import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
@@ -349,6 +350,8 @@ export default function HomePage() {
         onChangeRepo={setRepo}
         onChangeBranch={setBranch}
       />
+
+      <CleanupPanel owner={owner} repo={repo} branch={branch} />
     </main>
   );
 }

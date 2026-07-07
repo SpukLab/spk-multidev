@@ -152,5 +152,69 @@ async function getDefaultBranch(ref: RepoRef): Promise<string> {
   return data.default_branch;
 }
 
+/**
+ * Lista todos los archivos del repo (recursivo) — usado por el Nivel 1 de
+ * limpieza masiva (sección 15): borrado de archivos sueltos dentro de un repo.
+ */
+export async function listRepoTree(ref: RepoRef): Promise<string[]> {
+  const octokit = getOctokit();
+  const branch = ref.branch ?? (await getDefaultBranch(ref));
+
+  const { data: refData } = await octokit.git.getRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+  });
+
+  const { data: tree } = await octokit.git.getTree({
+    owner: ref.owner,
+    repo: ref.repo,
+    tree_sha: refData.object.sha,
+    recursive: "true",
+  });
+
+  return (tree.tree ?? [])
+    .filter((item) => item.type === "blob" && item.path)
+    .map((item) => item.path as string);
+}
+
+export interface RepoSummary {
+  owner: string;
+  name: string;
+  lastCommitDate: string | null;
+  private: boolean;
+}
+
+/**
+ * Lista todos los repos de la cuenta con fecha del último commit — usado
+ * por el Nivel 2 de limpieza masiva (borrado de repos completos, sección 15).
+ */
+export async function listAccountRepos(): Promise<RepoSummary[]> {
+  const octokit = getOctokit();
+  const { data } = await octokit.repos.listForAuthenticatedUser({
+    per_page: 100,
+    sort: "updated",
+  });
+
+  return data.map((r) => ({
+    owner: r.owner.login,
+    name: r.name,
+    lastCommitDate: r.pushed_at ?? null,
+    private: r.private,
+  }));
+}
+
+/**
+ * Borra un repo completo. IRREVERSIBLE — no existe papelera en GitHub.
+ * Requiere que el token tenga el scope delete_repo habilitado (sección 15).
+ * El llamador es responsable de exigir la confirmación reforzada antes de
+ * invocar esto (tipear el nombre exacto del repo).
+ */
+export async function deleteRepo(owner: string, repo: string): Promise<void> {
+  const octokit = getOctokit();
+  await octokit.repos.delete({ owner, repo });
+}
+
 // Re-exportado para uso en API routes que resuelven instrucciones de intake.
 export type { IntakeInstruction };
+
