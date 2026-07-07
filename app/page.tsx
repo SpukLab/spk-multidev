@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Panel, PanelMessage } from "@/components/Panel";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
@@ -52,6 +52,14 @@ export default function HomePage() {
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("main");
   const [viewMode, setViewMode] = useState<"both" | "left" | "right">("both");
+
+  // En pantallas angostas, arrancar mostrando una sola pestaña en vez de
+  // ambos paneles apilados (evita scroll largo en mobile).
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 860) {
+      setViewMode("left");
+    }
+  }, []);
 
   // Proyecto / contexto / sesiones (sección 11 y 13 de CONTEXT_BASE.md)
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -272,21 +280,14 @@ export default function HomePage() {
         onNewSession={handleNewSession}
       />
 
-      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        {(["both", "left", "right"] as const).map((mode) => (
+      <div className="tab-bar">
+        {(["left", "right", "both"] as const).map((mode) => (
           <button
             key={mode}
             onClick={() => setViewMode(mode)}
-            style={{
-              background: viewMode === mode ? "var(--spk-active-bg)" : "var(--spk-button-bg)",
-              color: viewMode === mode ? "var(--spk-active-fg)" : "var(--spk-text-dim)",
-              border: "1px solid var(--spk-border)",
-              borderRadius: 6,
-              padding: "5px 10px",
-              fontSize: 11,
-            }}
+            className={viewMode === mode ? "active" : ""}
           >
-            {mode === "both" ? "Ambos paneles" : mode === "left" ? "Solo Panel A" : "Solo Panel B"}
+            {mode === "left" ? "Chat A" : mode === "right" ? "Chat B" : "Ambos"}
           </button>
         ))}
       </div>

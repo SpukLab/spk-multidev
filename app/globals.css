@@ -117,4 +117,37 @@ input {
       background-position: 200% 0%;
     }
   }
+
+  /* Safari iOS hace zoom automático al enfocar inputs con font-size < 16px.
+     Forzamos 16px en mobile para evitar el zoom y que el usuario tenga que
+     buscar el botón de enviar fuera de pantalla. */
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+.tab-bar {
+  display: flex;
+  border: 1px solid var(--spk-border);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.tab-bar button {
+  flex: 1;
+  border: none;
+  padding: 8px 4px;
+  font-size: 12px;
+  background: transparent;
+  color: var(--spk-text-dim);
+  border-bottom: 2px solid transparent;
+}
+
+.tab-bar button.active {
+  background: var(--spk-active-bg);
+  color: var(--spk-active-fg);
+  border-bottom: 2px solid var(--spk-cyan);
 }
