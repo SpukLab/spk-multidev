@@ -47,3 +47,12 @@ create table if not exists code_intake_queue (
 
 create index if not exists idx_messages_session on messages(session_id);
 create index if not exists idx_intake_session on code_intake_queue(session_id);
+
+-- Seguridad: activar RLS sin políticas (deny-by-default) en las 4 tablas.
+-- El hub accede solo vía SUPABASE_SERVICE_ROLE_KEY (server-side, ignora RLS),
+-- así que esto bloquea cualquier acceso público vía la key "anon" sin
+-- afectar el funcionamiento normal del hub.
+alter table projects enable row level security;
+alter table sessions enable row level security;
+alter table messages enable row level security;
+alter table code_intake_queue enable row level security;
