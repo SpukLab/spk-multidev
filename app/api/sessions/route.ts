@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createSession, listSessions } from "@/lib/db/sessions";
+import { createSession, listSessionsWithPreview } from "@/lib/db/sessions";
 
 export async function GET(req: NextRequest) {
   try {
@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
     if (!projectId) {
       return NextResponse.json({ error: "Falta projectId." }, { status: 400 });
     }
-    const sessions = await listSessions(projectId);
+    const sessions = await listSessionsWithPreview(projectId);
     return NextResponse.json({ sessions });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error desconocido";

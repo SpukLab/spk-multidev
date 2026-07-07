@@ -1,10 +1,5 @@
 "use client";
 
-interface SessionSummary {
-  id: string;
-  updated_at: string;
-}
-
 interface ProjectBarProps {
   owner: string;
   repo: string;
@@ -20,10 +15,8 @@ interface ProjectBarProps {
   onChangeContext: (v: string) => void;
   contextExpanded: boolean;
   onToggleContextExpanded: () => void;
-  sessions: SessionSummary[];
-  currentSessionId: string | null;
-  onSelectSession: (id: string) => void;
-  onNewSession: () => void;
+  sessionsCount: number;
+  onOpenChats: () => void;
 }
 
 export function ProjectBar({
@@ -41,10 +34,8 @@ export function ProjectBar({
   onChangeContext,
   contextExpanded,
   onToggleContextExpanded,
-  sessions,
-  currentSessionId,
-  onSelectSession,
-  onNewSession,
+  sessionsCount,
+  onOpenChats,
 }: ProjectBarProps) {
   return (
     <section
@@ -80,25 +71,8 @@ export function ProjectBar({
           {loading ? "Cargando..." : "Cargar proyecto"}
         </button>
 
-        {sessions.length > 0 && (
-          <select
-            value={currentSessionId ?? ""}
-            onChange={(e) => onSelectSession(e.target.value)}
-            style={inputStyle}
-          >
-            <option value="" disabled>
-              Chats guardados ({sessions.length})
-            </option>
-            {sessions.map((s) => (
-              <option key={s.id} value={s.id}>
-                {new Date(s.updated_at).toLocaleString("es-AR")}
-              </option>
-            ))}
-          </select>
-        )}
-
-        <button onClick={onNewSession} style={buttonStyle}>
-          + Nuevo chat
+        <button onClick={onOpenChats} style={buttonStyle}>
+          Chats ({sessionsCount})
         </button>
       </div>
 

@@ -86,6 +86,43 @@ export async function listSessions(projectId: string): Promise<SessionRecord[]> 
   return (data ?? []) as SessionRecord[];
 }
 
+export interface SessionWithPreview extends SessionRecord {
+  preview: string | null;
+}
+
+/**
+ * Lista sesiones con un preview (primer mensaje de usuario) para mostrar
+ * en el drawer de chats, similar al patrón de listas de chat de apps como
+ * ChatGPT/big-AGI.
+ */
+export async function listSessionsWithPreview(projectId: string): Promise<SessionWithPreview[]> {
+  const supabase = getSupabaseServerClient();
+  const sessions = await listSessions(projectId);
+
+  const withPreview = await Promise.all(
+    sessions.map(async (s) => {
+      const { data } = await supabase
+        .from("messages")
+        .select("content")
+        .eq("session_id", s.id)
+        .eq("role", "user")
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      return { ...s, preview: data?.content ?? null };
+    })
+  );
+
+  return withPreview;
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const supabase = getSupabaseServerClient();
+  // messages tiene ON DELETE CASCADE sobre session_id, así que se limpian solos.
+  const { error } = await supabase.from("sessions").delete().eq("id", sessionId);
+  if (error) throw error;
+}
+
 export async function getMessages(sessionId: string): Promise<MessageRecord[]> {
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase

@@ -5,6 +5,7 @@ import { Panel, PanelMessage } from "@/components/Panel";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { CleanupPanel } from "@/components/CleanupPanel";
+import { ChatsDrawer } from "@/components/ChatsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
@@ -21,6 +22,7 @@ interface PanelState {
 interface SessionSummary {
   id: string;
   updated_at: string;
+  preview: string | null;
 }
 
 interface StoredMessage {
@@ -71,6 +73,7 @@ export default function HomePage() {
   const [contextExpanded, setContextExpanded] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
 
   async function handleLoadProject() {
     if (!owner || !repo) {
@@ -234,6 +237,20 @@ export default function HomePage() {
     }
   }
 
+  async function handleDeleteSession(sessionId: string) {
+    try {
+      await fetch(`/api/sessions/${sessionId}`, { method: "DELETE" });
+      setSessions((prev) => prev.filter((s) => s.id !== sessionId));
+      if (currentSessionId === sessionId) {
+        setCurrentSessionId(null);
+        setLeft((s) => ({ ...s, messages: [] }));
+        setRight((s) => ({ ...s, messages: [] }));
+      }
+    } catch {
+      setProjectStatus("Error al borrar el chat.");
+    }
+  }
+
   function sendToOther(fromPanel: "left" | "right", content: string, template: string) {
     const toPanel = fromPanel === "left" ? "right" : "left";
     const finalText = template.trim() ? template.replace("[mensaje]", content) : content;
@@ -275,10 +292,18 @@ export default function HomePage() {
         onChangeContext={setContextText}
         contextExpanded={contextExpanded}
         onToggleContextExpanded={() => setContextExpanded((v) => !v)}
+        sessionsCount={sessions.length}
+        onOpenChats={() => setChatsDrawerOpen(true)}
+      />
+
+      <ChatsDrawer
+        open={chatsDrawerOpen}
+        onClose={() => setChatsDrawerOpen(false)}
         sessions={sessions}
         currentSessionId={currentSessionId}
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
+        onDeleteSession={handleDeleteSession}
       />
 
       <div className="tab-bar">
