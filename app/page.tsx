@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Panel, PanelMessage } from "@/components/Panel";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
+import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
 
@@ -14,6 +15,18 @@ interface PanelState {
   messages: PanelMessage[];
   busy: boolean;
   collapsed: boolean;
+}
+
+interface SessionSummary {
+  id: string;
+  updated_at: string;
+}
+
+interface StoredMessage {
+  id: string;
+  panel: "left" | "right";
+  role: "system" | "user" | "assistant";
+  content: string;
 }
 
 function initialPanelState(provider: string, model: string): PanelState {
@@ -38,15 +51,125 @@ export default function HomePage() {
   const [branch, setBranch] = useState("main");
   const [viewMode, setViewMode] = useState<"both" | "left" | "right">("both");
 
+  // Proyecto / contexto / sesiones (sección 11 y 13 de CONTEXT_BASE.md)
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectLoading, setProjectLoading] = useState(false);
+  const [projectStatus, setProjectStatus] = useState<string | null>(null);
+  const [contextText, setContextText] = useState("");
+  const [contextSource, setContextSource] = useState<string | null>(null);
+  const [contextExpanded, setContextExpanded] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  async function handleLoadProject() {
+    if (!owner || !repo) {
+      setProjectStatus("Completá owner y repo primero.");
+      return;
+    }
+    setProjectLoading(true);
+    setProjectStatus(null);
+    try {
+      const projRes = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ owner, repo, branch }),
+      });
+      const projData = await projRes.json();
+      if (projData.error) {
+        setProjectStatus(`Proyecto no persistido (Supabase no configurado?): ${projData.error}`);
+        setProjectId(null);
+      } else {
+        setProjectId(projData.project.id);
+
+        const sessRes = await fetch(`/api/sessions?projectId=${projData.project.id}`);
+        const sessData = await sessRes.json();
+        setSessions(sessData.sessions ?? []);
+      }
+
+      const ctxRes = await fetch("/api/github/context", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ owner, repo, branch }),
+      });
+      const ctxData = await ctxRes.json();
+      setContextText(ctxData.content ?? "");
+      setContextSource(ctxData.source ?? null);
+
+      setProjectStatus(
+        ctxData.source
+          ? `Contexto cargado desde ${ctxData.source} (${(ctxData.content ?? "").length} caracteres).`
+          : "No se encontró CONTEXT_BASE.md ni README.md en el repo."
+      );
+    } catch (err) {
+      setProjectStatus(`Error: ${err instanceof Error ? err.message : "desconocido"}`);
+    } finally {
+      setProjectLoading(false);
+    }
+  }
+
+  async function handleNewSession() {
+    if (!projectId) {
+      setProjectStatus("Cargá un proyecto primero (necesita Supabase configurado).");
+      return;
+    }
+    const res = await fetch("/api/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      setProjectStatus(`Error creando chat: ${data.error}`);
+      return;
+    }
+    setCurrentSessionId(data.session.id);
+    setSessions((prev) => [data.session, ...prev]);
+    setLeft((s) => ({ ...s, messages: [] }));
+    setRight((s) => ({ ...s, messages: [] }));
+  }
+
+  async function handleSelectSession(sessionId: string) {
+    setCurrentSessionId(sessionId);
+    const res = await fetch(`/api/sessions/${sessionId}/messages`);
+    const data = await res.json();
+    const msgs: StoredMessage[] = data.messages ?? [];
+
+    const toPanelMsgs = (panel: "left" | "right"): PanelMessage[] =>
+      msgs
+        .filter((m) => m.panel === panel && m.role !== "system")
+        .map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }));
+
+    setLeft((s) => ({ ...s, messages: toPanelMsgs("left") }));
+    setRight((s) => ({ ...s, messages: toPanelMsgs("right") }));
+  }
+
+  async function persistMessage(panel: "left" | "right", role: "user" | "assistant", content: string) {
+    if (!currentSessionId) return;
+    try {
+      await fetch(`/api/sessions/${currentSessionId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ panel, role, content }),
+      });
+    } catch {
+      // Falla silenciosa: no bloquea el chat si la persistencia falla puntualmente.
+    }
+  }
+
   async function sendMessage(panel: "left" | "right", text: string) {
     const state = panel === "left" ? left : right;
     const setState = panel === "left" ? setLeft : setRight;
 
     const userMsg: PanelMessage = { id: nextId(), role: "user", content: text };
     setState({ ...state, messages: [...state.messages, userMsg], busy: true });
+    persistMessage(panel, "user", text);
 
     const roleDef = defaultRoles.find((r) => r.id === state.roleId);
-    const systemContent = [roleDef?.systemPrompt, CODE_INTAKE_INSTRUCTION]
+    const systemContent = [
+      roleDef?.systemPrompt,
+      contextText ? `Contexto del proyecto (${contextSource}):\n${contextText}` : null,
+      CODE_INTAKE_INSTRUCTION,
+    ]
       .filter(Boolean)
       .join("\n\n");
 
@@ -66,14 +189,13 @@ export default function HomePage() {
       });
       const data = await res.json();
 
+      const assistantContent = data.error ? `Error: ${data.error}` : data.content;
       const assistantMsg: PanelMessage = {
         id: nextId(),
         role: "assistant",
-        content: data.error ? `Error: ${data.error}` : data.content,
+        content: assistantContent,
         originLabel:
-          roleDef && roleDef.id !== "none"
-            ? `${roleDef.label} (${state.provider})`
-            : undefined,
+          roleDef && roleDef.id !== "none" ? `${roleDef.label} (${state.provider})` : undefined,
       };
 
       setState((prev) => ({
@@ -81,6 +203,10 @@ export default function HomePage() {
         messages: [...prev.messages, assistantMsg],
         busy: false,
       }));
+
+      if (!data.error) {
+        persistMessage(panel, "assistant", assistantContent);
+      }
     } catch (err) {
       setState((prev) => ({
         ...prev,
@@ -122,6 +248,27 @@ export default function HomePage() {
           Dual-panel · roles · Code Intake · push directo a GitHub
         </p>
       </header>
+
+      <ProjectBar
+        owner={owner}
+        repo={repo}
+        branch={branch}
+        onChangeOwner={setOwner}
+        onChangeRepo={setRepo}
+        onChangeBranch={setBranch}
+        onLoadProject={handleLoadProject}
+        projectStatus={projectStatus}
+        loading={projectLoading}
+        contextText={contextText}
+        contextSource={contextSource}
+        onChangeContext={setContextText}
+        contextExpanded={contextExpanded}
+        onToggleContextExpanded={() => setContextExpanded((v) => !v)}
+        sessions={sessions}
+        currentSessionId={currentSessionId}
+        onSelectSession={handleSelectSession}
+        onNewSession={handleNewSession}
+      />
 
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         {(["both", "left", "right"] as const).map((mode) => (

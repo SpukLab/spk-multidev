@@ -10,9 +10,13 @@ ratificadas — es la fuente de verdad de este proyecto.
 
 ## Estado
 
-Scaffold inicial. Pendiente: implementación de UI (dual-panel, roles,
-árbol de Code Intake, diff viewer), persistencia de sesión (Vercel KV),
-auth propia, y las funciones de limpieza masiva (sección 15).
+Implementado: dual-panel con proveedor/modelo/rol independiente, catálogo
+dinámico de modelos por proveedor, Code Intake (parser + diff real + commit
+a GitHub), carga automática de contexto de proyecto (`CONTEXT_BASE.md`) y
+listado/persistencia de chats vía Supabase.
+
+Pendiente: auth propia delante del hub, selector de proyecto/repo con UI más
+rica (hoy son inputs de texto), y las funciones de limpieza masiva (sección 15).
 
 ## Stack
 
