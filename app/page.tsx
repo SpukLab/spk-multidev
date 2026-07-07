@@ -40,10 +40,10 @@ function nextId() {
 }
 
 export default function HomePage() {
-  const [left, setLeft] = useState<PanelState>(initialPanelState("anthropic", "claude-sonnet-5"));
-  const [right, setRight] = useState<PanelState>(
+  const [left, setLeft] = useState<PanelState>(
     initialPanelState("nvidia", "nvidia/llama-3.3-nemotron-super-49b-v1")
   );
+  const [right, setRight] = useState<PanelState>(initialPanelState("openai", "gpt-4o"));
 
   const [intakeRawText, setIntakeRawText] = useState("");
   const [owner, setOwner] = useState("SpukLab");

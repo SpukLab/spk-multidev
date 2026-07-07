@@ -76,10 +76,16 @@ export function Panel({
         if (cancelled) return;
         setModelOptions(data.models ?? getModelsForProvider(provider));
         if (data.warning) setCatalogWarning(data.warning);
-        // Si el modelo actual no está en el catálogo nuevo, auto-seleccionar el primero.
+        // Si el modelo actual no está en el catálogo nuevo, auto-seleccionar
+        // el que matchee el keyword preferido del proveedor (ej: "nemotron",
+        // "gpt-4o"), o si no hay match, el primero de la lista.
         const list: ModelOption[] = data.models ?? [];
         if (list.length > 0 && !list.some((m) => m.id === model)) {
-          onChangeModel(list[0].id);
+          const preferredKeyword = providers.find((p) => p.id === provider)?.preferredKeyword;
+          const preferred = preferredKeyword
+            ? list.find((m) => m.id.toLowerCase().includes(preferredKeyword.toLowerCase()))
+            : undefined;
+          onChangeModel((preferred ?? list[0]).id);
         }
       })
       .catch(() => {
