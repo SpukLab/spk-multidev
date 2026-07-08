@@ -2,17 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAgentJob, setJobConversationId, markJobFailed } from "@/lib/db/agentJobs";
 
 /**
- * Dispara una tarea en el Agent Server de OpenHands y devuelve de inmediato.
- * NUNCA espera a que la tarea termine — eso puede tardar minutos, y una
- * función de Vercel no puede sostener esa espera (timeout). El progreso
- * llega después vía webhook (/api/openhands/webhook), sección 20 de
- * CONTEXT_BASE.md.
+ * Dispara una tarea en OpenHands y devuelve de inmediato — nunca espera a
+ * que la tarea termine (eso puede tardar minutos, incompatible con el
+ * timeout de una función de Vercel). El progreso llega vía polling del
+ * relay local (scripts/openhands-relay.js), no vía webhook nativo —
+ * confirmado que esta versión de OpenHands no expone un tipo de processor
+ * de webhook genérico (sección 20 revisada de CONTEXT_BASE.md).
  *
- * IMPORTANTE: el payload exacto de POST /conversations puede variar según
- * la versión del Agent Server que tengas corriendo. Verificá el contrato
- * real contra el /docs (Swagger) de tu propio Agent Server y ajustá acá si
- * hace falta — esto usa los nombres de campo documentados públicamente
- * (initial_user_msg, repository) como punto de partida razonable.
+ * Endpoint y schema confirmados contra el Swagger real de la instancia
+ * (POST /api/v1/app-conversations, "Start App Conversation").
  */
 export async function POST(req: NextRequest) {
   let job;
@@ -34,6 +32,7 @@ export async function POST(req: NextRequest) {
 
     const openHandsBaseUrl = process.env.OPENHANDS_BASE_URL;
     const openHandsApiKey = process.env.OPENHANDS_API_KEY;
+    const openHandsLlmModel = process.env.OPENHANDS_LLM_MODEL; // ej: openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
     if (!openHandsBaseUrl) {
       return NextResponse.json(
         { error: "OPENHANDS_BASE_URL no configurado en el servidor." },
@@ -49,18 +48,23 @@ export async function POST(req: NextRequest) {
       branch: branch ?? "main",
     });
 
-    // Dispara la conversación en el Agent Server. Esta llamada debe volver
-    // rápido (el Agent Server arranca el trabajo en background y devuelve
-    // un id) — nunca hay que esperar acá a que la tarea termine.
-    const ohRes = await fetch(`${openHandsBaseUrl}/conversations`, {
+    const ohRes = await fetch(`${openHandsBaseUrl}/api/v1/app-conversations`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(openHandsApiKey ? { Authorization: `Bearer ${openHandsApiKey}` } : {}),
       },
       body: JSON.stringify({
-        initial_user_msg: taskDescription,
-        repository: `${owner}/${repo}`,
+        initial_message: {
+          role: "user",
+          content: [{ type: "text", text: taskDescription, cache_prompt: false }],
+          run: true,
+        },
+        selected_repository: `${owner}/${repo}`,
+        selected_branch: branch ?? "main",
+        git_provider: "github",
+        ...(openHandsLlmModel ? { llm_model: openHandsLlmModel } : {}),
+        title: taskDescription.slice(0, 60),
       }),
     });
 
@@ -74,11 +78,13 @@ export async function POST(req: NextRequest) {
     }
 
     const ohData = await ohRes.json();
-    const conversationId = ohData.conversation_id ?? ohData.id;
+    // El campo exacto del id devuelto puede ser "conversation_id" o "id"
+    // según la versión — se cubren ambos.
+    const conversationId: string | undefined = ohData.conversation_id ?? ohData.id;
     if (!conversationId) {
       await markJobFailed(job.id, "OpenHands no devolvió un conversation_id reconocible.");
       return NextResponse.json(
-        { error: "OpenHands no devolvió conversation_id. Revisar el payload real en /docs del Agent Server." },
+        { error: "OpenHands no devolvió conversation_id. Revisar la respuesta real en /docs." },
         { status: 502 }
       );
     }
