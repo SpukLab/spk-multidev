@@ -27,6 +27,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ jobs: data ?? [] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error desconocido";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: message,
+        // Diagnóstico temporal (sin exponer valores): confirma si las env
+        // vars están presentes en este deployment. Sacar una vez resuelto.
+        debug: {
+          hasSupabaseUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+          hasServiceRoleKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+          supabaseUrlLength: (process.env.NEXT_PUBLIC_SUPABASE_URL ?? "").length,
+        },
+      },
+      { status: 500 }
+    );
   }
 }
