@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseCodeIntake } from "@/lib/codeIntake/parser";
 import { resolveInstructions } from "@/lib/codeIntake/resolve";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ resolved });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

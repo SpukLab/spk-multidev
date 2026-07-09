@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFileContent } from "@/lib/github/client";
+import { getErrorMessage } from "@/lib/errors";
 
 // Trae el CONTEXT_BASE.md del repo activo (o README.md como fallback) para
 // adjuntarlo automáticamente como contexto a cualquier IA consultada desde
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ content, source });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

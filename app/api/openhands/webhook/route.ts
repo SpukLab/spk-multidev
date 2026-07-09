@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJobByConversationId, appendAgentJobEvent, updateJobStatus } from "@/lib/db/agentJobs";
+import { getErrorMessage } from "@/lib/errors";
 
 /**
  * Recibe eventos que el Agent Server de OpenHands empuja a medida que
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

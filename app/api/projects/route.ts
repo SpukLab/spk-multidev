@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertProject, listProjects } from "@/lib/db/sessions";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function GET() {
   try {
     const projects = await listProjects();
     return NextResponse.json({ projects });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     const project = await upsertProject(owner, repo, branch ?? "main");
     return NextResponse.json({ project });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

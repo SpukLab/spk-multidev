@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdapter } from "@/lib/adapters";
 import { getModelsForProvider } from "@/lib/providerModels";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(req: NextRequest) {
   let provider = "";
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ models, fallback: false });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     // Ante cualquier error de catálogo, no rompemos la UI: devolvemos fallback.
     return NextResponse.json(
       { models: getModelsForProvider(provider), fallback: true, warning: message },

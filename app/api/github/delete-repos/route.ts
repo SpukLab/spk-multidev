@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteRepo } from "@/lib/github/client";
+import { getErrorMessage } from "@/lib/errors";
 
 // Borrado de repos completos — irreversible, sin papelera en GitHub.
 // Exige que el cliente envíe confirmText igual al nombre exacto de los
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ results });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

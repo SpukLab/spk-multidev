@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listAgentJobs } from "@/lib/db/agentJobs";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,7 +11,7 @@ export async function GET(req: NextRequest) {
     const jobs = await listAgentJobs(projectId);
     return NextResponse.json({ jobs });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

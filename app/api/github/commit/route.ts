@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { commitFiles, RepoRef } from "@/lib/github/client";
+import { getErrorMessage } from "@/lib/errors";
 
 // Recibe instrucciones ya resueltas (con content final calculado en el
 // cliente tras el flujo fetch -> diff -> confirmar de la sección 7) y las
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ commitSha });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listRepoTree } from "@/lib/github/client";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
     const files = await listRepoTree({ owner, repo, branch }, githubToken);
     return NextResponse.json({ files });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAgentJob, setJobConversationId, markJobFailed } from "@/lib/db/agentJobs";
+import { getErrorMessage } from "@/lib/errors";
 
 /**
  * Dispara una tarea en OpenHands y devuelve de inmediato — nunca espera a
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ jobId: job.id, conversationId });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     if (job) await markJobFailed(job.id, message);
     return NextResponse.json({ error: message }, { status: 500 });
   }

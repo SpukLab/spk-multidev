@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdapter } from "@/lib/adapters";
 import { ChatMessage } from "@/lib/adapters/types";
+import { getErrorMessage } from "@/lib/errors";
 
 // Proxy hacia cada proveedor de IA. Las API keys viven solo en variables
 // de entorno de Vercel — nunca llegan al cliente (CONTEXT_BASE.md sección 2).
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(response);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

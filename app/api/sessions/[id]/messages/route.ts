@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMessages, appendMessage } from "@/lib/db/sessions";
+import { getErrorMessage } from "@/lib/errors";
 
 export async function GET(
   req: NextRequest,
@@ -9,7 +10,7 @@ export async function GET(
     const messages = await getMessages(params.id);
     return NextResponse.json({ messages });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -30,7 +31,7 @@ export async function POST(
     await appendMessage(params.id, panel, role, content);
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
+    const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
