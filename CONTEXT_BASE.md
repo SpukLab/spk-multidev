@@ -351,12 +351,15 @@ no el componente "Agent Server" headless que se había asumido inicialmente):**
 4. El browser sigue suscrito directo a Supabase Realtime — sin cambios acá,
    el relay es invisible para la UI.
 
-**Nota de mantenimiento**: el nombre exacto del campo de estado de una
-conversación (`status`/`agent_state`/`runtime_status`) y el shape de cada
-evento individual no están 100% confirmados contra el schema — el relay
-prueba varios nombres razonables. Si el estado "completado" no se detecta
-bien en la práctica, revisar `scripts/openhands-relay.js` (`getConversationStatus`)
-contra la respuesta real logueada.
+**Estructura real confirmada** (contra la instancia corriendo, vía PowerShell +
+`Invoke-RestMethod` + `Get-Member`): el endpoint correcto es
+`GET /api/v1/conversation/{id}/events/search` (no `/events` a secas, que
+exige un `id` de evento puntual). Devuelve `{ items: [...], next_page_id }`.
+Cada evento tiene `{ id, key, kind, source, timestamp, value }` — el estado
+de ejecución viaja embebido en el evento `kind: "ConversationStateUpdateEvent"`,
+campo `value.execution_status` (valor visto: `"finished"`) — no hace falta
+un endpoint aparte para el estado, se lee del propio stream de eventos.
+El relay quedó actualizado para usar esta estructura real.
 
 **LiteLLM + modelos NIM**: confirmado que LiteLLM exige un prefijo de
 proveedor reconocido en el nombre del modelo. Un modelo NVIDIA NIM debe

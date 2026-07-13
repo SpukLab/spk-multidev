@@ -34,27 +34,14 @@ async function getActiveJobs() {
 
 async function getConversationEvents(conversationId) {
   const res = await fetch(
-    `${OPENHANDS_LOCAL_URL}/api/v1/conversation/${conversationId}/events`
+    `${OPENHANDS_LOCAL_URL}/api/v1/conversation/${conversationId}/events/search`
   );
   if (!res.ok) return [];
   const data = await res.json();
-  // El shape exacto (array directo vs {events: [...]}) puede variar —
-  // se cubren ambos casos.
-  return Array.isArray(data) ? data : data.events ?? [];
-}
-
-async function getConversationStatus(conversationId) {
-  const res = await fetch(
-    `${OPENHANDS_LOCAL_URL}/api/v1/app-conversations?ids=${conversationId}`
-  );
-  if (!res.ok) return null;
-  const data = await res.json();
-  const list = Array.isArray(data) ? data : data.results ?? data.conversations ?? [];
-  const convo = list[0];
-  if (!convo) return null;
-  // Nombre exacto del campo de estado no confirmado — se prueban los más
-  // probables. Si no matchea ninguno, ajustar acá tras loguear `convo`.
-  return convo.status ?? convo.agent_state ?? convo.runtime_status ?? null;
+  // Confirmado contra una instancia real: { items: [...], next_page_id }.
+  // TODO: si una conversación acumula MUCHOS eventos, sumar paginado real
+  // con next_page_id en vez de traer todo cada vez.
+  return data.items ?? [];
 }
 
 async function sendToWebhook(conversationId, eventType, content, status, raw) {
@@ -82,27 +69,34 @@ async function pollOnce() {
       if (events.length > seenCount) {
         const newEvents = events.slice(seenCount);
         for (const ev of newEvents) {
-          const eventType = ev.action ?? ev.observation ?? ev.type ?? "event";
+          // Estructura real confirmada: { id, key, kind, source, timestamp, value }.
+          const eventType = ev.kind ?? "event";
           const content =
-            (typeof ev.content === "string" && ev.content) ||
-            ev.args?.content ||
-            ev.message ||
+            (typeof ev.value?.content === "string" && ev.value.content) ||
+            (typeof ev.value?.message === "string" && ev.value.message) ||
             null;
-          await sendToWebhook(conversationId, eventType, content, undefined, ev);
+
+          // El estado de ejecución viaja embebido en el propio evento
+          // ConversationStateUpdateEvent (campo execution_status), no hace
+          // falta pegarle a otro endpoint aparte para saber si terminó.
+          let status;
+          if (ev.kind === "ConversationStateUpdateEvent" && ev.value?.execution_status) {
+            const execStatus = ev.value.execution_status;
+            if (/finish|complet/i.test(execStatus)) status = "finished";
+            else if (/error|stuck|fail/i.test(execStatus)) status = "error";
+          }
+
+          await sendToWebhook(conversationId, eventType, content, status, ev);
+
+          if (status === "finished" || status === "error") {
+            finishedJobs.add(job.id);
+          }
         }
         lastEventCount.set(conversationId, events.length);
         console.log(`[relay] job ${job.id.slice(0, 8)}: +${newEvents.length} eventos`);
-      }
-
-      const status = await getConversationStatus(conversationId);
-      if (status && /finish|stop|complet/i.test(status)) {
-        await sendToWebhook(conversationId, "status", null, "finished");
-        finishedJobs.add(job.id);
-        console.log(`[relay] job ${job.id.slice(0, 8)}: completado`);
-      } else if (status && /error|stuck|fail/i.test(status)) {
-        await sendToWebhook(conversationId, "status", null, "error");
-        finishedJobs.add(job.id);
-        console.log(`[relay] job ${job.id.slice(0, 8)}: falló`);
+        if (finishedJobs.has(job.id)) {
+          console.log(`[relay] job ${job.id.slice(0, 8)}: terminado`);
+        }
       }
     } catch (err) {
       console.error(`[relay] Error en job ${job.id}:`, err.message);
