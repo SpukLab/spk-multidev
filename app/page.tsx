@@ -109,8 +109,9 @@ export default function HomePage() {
         body: JSON.stringify({ owner, repo, branch }),
       });
       const projData = await projRes.json();
+      let projectStatusMsg = "";
       if (projData.error) {
-        setProjectStatus(`Proyecto no persistido (Supabase no configurado?): ${projData.error}`);
+        projectStatusMsg = `Proyecto no persistido en Supabase: ${projData.error}`;
         setProjectId(null);
       } else {
         setProjectId(projData.project.id);
@@ -129,11 +130,13 @@ export default function HomePage() {
       setContextText(ctxData.content ?? "");
       setContextSource(ctxData.source ?? null);
 
-      setProjectStatus(
-        ctxData.source
-          ? `Contexto cargado desde ${ctxData.source} (${(ctxData.content ?? "").length} caracteres).`
-          : "No se encontró CONTEXT_BASE.md ni README.md en el repo."
-      );
+      const contextStatusMsg = ctxData.source
+        ? `Contexto cargado desde ${ctxData.source} (${(ctxData.content ?? "").length} caracteres).`
+        : "No se encontró CONTEXT_BASE.md ni README.md en el repo.";
+
+      // Nunca ocultar un error real de Supabase detrás del status del
+      // contexto — se muestran ambos, separados.
+      setProjectStatus([projectStatusMsg, contextStatusMsg].filter(Boolean).join(" | "));
     } catch (err) {
       setProjectStatus(`Error: ${err instanceof Error ? err.message : "desconocido"}`);
     } finally {
