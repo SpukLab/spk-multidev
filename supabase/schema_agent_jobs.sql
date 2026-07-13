@@ -12,6 +12,7 @@ create table if not exists agent_jobs (
   branch text not null default 'main',
   status text not null default 'queued' check (status in ('queued','running','completed','failed')),
   openhands_conversation_id text,
+  openhands_start_task_id text,
   result_summary text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

@@ -1,10 +1,16 @@
 // Relay de OpenHands → SPK_MultiDev (CONTEXT_BASE.md sección 20 revisada).
 //
 // Corre en la misma PC que OpenHands (necesita llegar a localhost:3000).
-// Cada POLL_INTERVAL_MS le pregunta a nuestro hub qué jobs están activos,
-// pollea los eventos nuevos de cada conversación en OpenHands, y los
-// reenvía al webhook de Vercel — así la UI de SPK_MultiDev se actualiza
-// en vivo vía Supabase Realtime sin que Vercel tenga que esperar nada.
+// Cada POLL_INTERVAL_MS le pregunta a nuestro hub qué jobs están activos.
+//
+// Confirmado contra la instancia real: arrancar una conversación es un
+// proceso en DOS pasos asíncronos:
+//   1. POST /api/v1/app-conversations devuelve un AppConversationStartTask
+//      (status WORKING → ... → READY), NO la conversación en sí.
+//   2. Hay que pollear GET /api/v1/app-conversations/start-tasks?ids=<id>
+//      hasta que status=READY, ahí aparece el app_conversation_id real.
+// Recién con ese id real se puede pollear
+// GET /api/v1/conversation/{id}/events/search para ver el progreso.
 //
 // Requiere Node 18+ (fetch nativo, sin dependencias que instalar).
 // Correr con: node scripts/openhands-relay.js
@@ -14,11 +20,9 @@ const HUB_BASE_URL = process.env.HUB_BASE_URL || "https://spk-multidev.vercel.ap
 const RELAY_SECRET = process.env.OPENHANDS_WEBHOOK_SECRET || "";
 const POLL_INTERVAL_MS = 4000;
 
-// Recuerda cuántos eventos ya vimos por conversación, para solo reenviar
-// los nuevos en cada vuelta.
-const lastEventCount = new Map();
-// Recuerda si ya marcamos un job como terminado, para no repetir el aviso.
-const finishedJobs = new Set();
+const lastEventCount = new Map(); // conversationId -> cantidad de eventos ya vistos
+const finishedJobs = new Set(); // job.id ya cerrado (completado o fallido)
+const resolvedConversationId = new Map(); // job.id -> conversationId real, cacheado localmente
 
 async function getActiveJobs() {
   const res = await fetch(`${HUB_BASE_URL}/api/openhands/active-jobs`, {
@@ -32,15 +36,45 @@ async function getActiveJobs() {
   return data.jobs ?? [];
 }
 
+async function getStartTaskStatus(startTaskId) {
+  const res = await fetch(
+    `${OPENHANDS_LOCAL_URL}/api/v1/app-conversations/start-tasks?ids=${startTaskId}`
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  // Confirmado: devuelve un array directo (no envuelto en items).
+  const list = Array.isArray(data) ? data : data.items ?? [];
+  return list[0] ?? null;
+}
+
+async function resolveConversationId(jobId, conversationId) {
+  await fetch(`${HUB_BASE_URL}/api/openhands/resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(RELAY_SECRET ? { Authorization: `Bearer ${RELAY_SECRET}` } : {}),
+    },
+    body: JSON.stringify({ jobId, conversationId }),
+  });
+}
+
+async function reportStartTaskError(jobId, errorMsg) {
+  await fetch(`${HUB_BASE_URL}/api/openhands/resolve`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(RELAY_SECRET ? { Authorization: `Bearer ${RELAY_SECRET}` } : {}),
+    },
+    body: JSON.stringify({ jobId, error: errorMsg }),
+  });
+}
+
 async function getConversationEvents(conversationId) {
   const res = await fetch(
     `${OPENHANDS_LOCAL_URL}/api/v1/conversation/${conversationId}/events/search`
   );
   if (!res.ok) return [];
   const data = await res.json();
-  // Confirmado contra una instancia real: { items: [...], next_page_id }.
-  // TODO: si una conversación acumula MUCHOS eventos, sumar paginado real
-  // con next_page_id en vez de traer todo cada vez.
   return data.items ?? [];
 }
 
@@ -59,26 +93,49 @@ async function pollOnce() {
   const jobs = await getActiveJobs();
 
   for (const job of jobs) {
-    const conversationId = job.openhands_conversation_id;
-    if (!conversationId || finishedJobs.has(job.id)) continue;
+    if (finishedJobs.has(job.id)) continue;
 
     try {
+      // Paso 1: si todavía no tenemos un conversation_id real, resolver
+      // el start_task primero.
+      let conversationId = job.openhands_conversation_id || resolvedConversationId.get(job.id);
+
+      if (!conversationId && job.openhands_start_task_id) {
+        const task = await getStartTaskStatus(job.openhands_start_task_id);
+        if (!task) continue; // todavía no aparece, reintentar próxima vuelta
+
+        if (task.status === "READY" && task.app_conversation_id) {
+          conversationId = task.app_conversation_id;
+          resolvedConversationId.set(job.id, conversationId);
+          await resolveConversationId(job.id, conversationId);
+          console.log(`[relay] job ${job.id.slice(0, 8)}: resuelto → conversación ${conversationId.slice(0, 8)}...`);
+        } else if (task.status === "ERROR") {
+          await reportStartTaskError(job.id, task.detail ?? "Error desconocido arrancando la conversación.");
+          finishedJobs.add(job.id);
+          console.log(`[relay] job ${job.id.slice(0, 8)}: falló al arrancar (${task.detail ?? "sin detalle"})`);
+          continue;
+        } else {
+          // WAITING_FOR_SANDBOX, PREPARING_REPOSITORY, etc. — seguir esperando.
+          console.log(`[relay] job ${job.id.slice(0, 8)}: arrancando (${task.status})`);
+          continue;
+        }
+      }
+
+      if (!conversationId) continue;
+
+      // Paso 2: pollear eventos de la conversación ya resuelta.
       const events = await getConversationEvents(conversationId);
       const seenCount = lastEventCount.get(conversationId) ?? 0;
 
       if (events.length > seenCount) {
         const newEvents = events.slice(seenCount);
         for (const ev of newEvents) {
-          // Estructura real confirmada: { id, key, kind, source, timestamp, value }.
           const eventType = ev.kind ?? "event";
           const content =
             (typeof ev.value?.content === "string" && ev.value.content) ||
             (typeof ev.value?.message === "string" && ev.value.message) ||
             null;
 
-          // El estado de ejecución viaja embebido en el propio evento
-          // ConversationStateUpdateEvent (campo execution_status), no hace
-          // falta pegarle a otro endpoint aparte para saber si terminó.
           let status;
           if (ev.kind === "ConversationStateUpdateEvent" && ev.value?.execution_status) {
             const execStatus = ev.value.execution_status;

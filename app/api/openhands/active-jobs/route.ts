@@ -19,9 +19,8 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseServerClient();
     const { data, error } = await supabase
       .from("agent_jobs")
-      .select("id, openhands_conversation_id, status")
-      .in("status", ["queued", "running"])
-      .not("openhands_conversation_id", "is", null);
+      .select("id, openhands_conversation_id, openhands_start_task_id, status")
+      .in("status", ["queued", "running"]);
 
     if (error) throw error;
 

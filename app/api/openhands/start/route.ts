@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAgentJob, setJobConversationId, markJobFailed } from "@/lib/db/agentJobs";
+import { createAgentJob, setJobStartTaskId, markJobFailed } from "@/lib/db/agentJobs";
 import { getErrorMessage } from "@/lib/errors";
 
 /**
@@ -79,20 +79,25 @@ export async function POST(req: NextRequest) {
     }
 
     const ohData = await ohRes.json();
-    // El campo exacto del id devuelto puede ser "conversation_id" o "id"
-    // según la versión — se cubren ambos.
-    const conversationId: string | undefined = ohData.conversation_id ?? ohData.id;
-    if (!conversationId) {
-      await markJobFailed(job.id, "OpenHands no devolvió un conversation_id reconocible.");
+    // Este id es el de la AppConversationStartTask (tarea de arranque
+    // asíncrona) — NO el de la conversación final. Confirmado contra la
+    // instancia real: POST /api/v1/app-conversations devuelve un objeto
+    // {id, status: "WORKING", app_conversation_id: null, ...} y hay que
+    // pollear GET /api/v1/app-conversations/start-tasks?ids=<id> hasta
+    // status READY para recién ahí tener el app_conversation_id real. Esa
+    // resolución la hace el relay local (scripts/openhands-relay.js).
+    const startTaskId: string | undefined = ohData.id;
+    if (!startTaskId) {
+      await markJobFailed(job.id, "OpenHands no devolvió un id de start task reconocible.");
       return NextResponse.json(
-        { error: "OpenHands no devolvió conversation_id. Revisar la respuesta real en /docs." },
+        { error: "OpenHands no devolvió id. Revisar la respuesta real en /docs." },
         { status: 502 }
       );
     }
 
-    await setJobConversationId(job.id, conversationId);
+    await setJobStartTaskId(job.id, startTaskId);
 
-    return NextResponse.json({ jobId: job.id, conversationId });
+    return NextResponse.json({ jobId: job.id, startTaskId });
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     if (job) await markJobFailed(job.id, message);

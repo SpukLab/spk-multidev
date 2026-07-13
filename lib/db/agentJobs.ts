@@ -9,6 +9,7 @@ export interface AgentJob {
   branch: string;
   status: "queued" | "running" | "completed" | "failed";
   openhands_conversation_id: string | null;
+  openhands_start_task_id: string | null;
   result_summary: string | null;
   created_at: string;
   updated_at: string;
@@ -55,6 +56,36 @@ export async function setJobConversationId(
   const { error } = await supabase
     .from("agent_jobs")
     .update({ openhands_conversation_id: conversationId, status: "running", updated_at: new Date().toISOString() })
+    .eq("id", jobId);
+  if (error) throw error;
+}
+
+export async function setJobStartTaskId(jobId: string, startTaskId: string): Promise<void> {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("agent_jobs")
+    .update({ openhands_start_task_id: startTaskId, updated_at: new Date().toISOString() })
+    .eq("id", jobId);
+  if (error) throw error;
+}
+
+/**
+ * Se llama cuando el relay resuelve un start_task a un app_conversation_id
+ * real (status READY) — recién ahí el job pasa a poder pollearse por
+ * eventos de verdad.
+ */
+export async function resolveJobConversationId(
+  jobId: string,
+  conversationId: string
+): Promise<void> {
+  const supabase = getSupabaseServerClient();
+  const { error } = await supabase
+    .from("agent_jobs")
+    .update({
+      openhands_conversation_id: conversationId,
+      status: "running",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", jobId);
   if (error) throw error;
 }

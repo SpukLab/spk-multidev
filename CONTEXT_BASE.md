@@ -351,15 +351,19 @@ no el componente "Agent Server" headless que se había asumido inicialmente):**
 4. El browser sigue suscrito directo a Supabase Realtime — sin cambios acá,
    el relay es invisible para la UI.
 
-**Estructura real confirmada** (contra la instancia corriendo, vía PowerShell +
-`Invoke-RestMethod` + `Get-Member`): el endpoint correcto es
-`GET /api/v1/conversation/{id}/events/search` (no `/events` a secas, que
-exige un `id` de evento puntual). Devuelve `{ items: [...], next_page_id }`.
-Cada evento tiene `{ id, key, kind, source, timestamp, value }` — el estado
-de ejecución viaja embebido en el evento `kind: "ConversationStateUpdateEvent"`,
-campo `value.execution_status` (valor visto: `"finished"`) — no hace falta
-un endpoint aparte para el estado, se lee del propio stream de eventos.
-El relay quedó actualizado para usar esta estructura real.
+**Mecanismo real de arranque (confirmado en vivo, dos pasos asíncronos):**
+`POST /api/v1/app-conversations` **no devuelve la conversación lista** —
+arranca un `AppConversationStartTask` (status `WORKING` →
+`WAITING_FOR_SANDBOX` → ... → `READY`, o `ERROR`) y devuelve el `id` de
+esa tarea, con `app_conversation_id: null` hasta que esté lista. Hay que
+pollear `GET /api/v1/app-conversations/start-tasks?ids=<id>` hasta
+`status: "READY"`, recién ahí aparece el `app_conversation_id` real. Esa
+resolución la hace el relay local (no la función de Vercel, que debe
+responder rápido) — guarda el resultado en Supabase vía
+`POST /api/openhands/resolve` una vez resuelto. Columna nueva en
+`agent_jobs`: `openhands_start_task_id` (el id de la tarea de arranque,
+distinto de `openhands_conversation_id`, que queda null hasta la
+resolución).
 
 **LiteLLM + modelos NIM**: confirmado que LiteLLM exige un prefijo de
 proveedor reconocido en el nombre del modelo. Un modelo NVIDIA NIM debe
