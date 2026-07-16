@@ -90,7 +90,13 @@ async function sendToWebhook(conversationId, eventType, content, status, raw) {
 }
 
 async function pollOnce() {
-  const jobs = await getActiveJobs();
+  let jobs;
+  try {
+    jobs = await getActiveJobs();
+  } catch (err) {
+    console.error("[relay] Error de red trayendo jobs activos (reintenta en la próxima vuelta):", err.message);
+    return;
+  }
 
   for (const job of jobs) {
     if (finishedJobs.has(job.id)) continue;
@@ -165,6 +171,15 @@ console.log(`[relay] Arrancando. OpenHands: ${OPENHANDS_LOCAL_URL} | Hub: ${HUB_
 if (!RELAY_SECRET) {
   console.warn("[relay] OPENHANDS_WEBHOOK_SECRET no seteado — las llamadas van sin autenticar.");
 }
+
+// Red de contención: un hipo de red (ECONNRESET, timeout, etc.) nunca debe
+// tirar abajo el proceso — el relay tiene que seguir corriendo indefinidamente.
+process.on("unhandledRejection", (err) => {
+  console.error("[relay] Error no manejado (el relay sigue corriendo):", err?.message ?? err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[relay] Excepción no capturada (el relay sigue corriendo):", err?.message ?? err);
+});
 
 setInterval(pollOnce, POLL_INTERVAL_MS);
 pollOnce();
