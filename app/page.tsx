@@ -193,13 +193,21 @@ export default function HomePage() {
     }
   }
 
+  // Umbral aproximado por proveedor — heurística conservadora en caracteres,
+  // no tokenización exacta (el catálogo de modelos es dinámico y no siempre
+  // expone la ventana de contexto real). Anthropic/OpenAI suelen tener
+  // ventanas grandes; los modelos NIM varían mucho, así que el umbral es
+  // más chico para evitar truncamientos silenciosos (CONTEXT_BASE.md §11,
+  // pieza que había quedado speceada y sin implementar).
+  const CONTEXT_SIZE_WARNING_THRESHOLD: Record<string, number> = {
+    nvidia: 60000,
+    anthropic: 300000,
+    openai: 200000,
+  };
+
   async function sendMessage(panel: "left" | "right", text: string) {
     const state = panel === "left" ? left : right;
     const setState = panel === "left" ? setLeft : setRight;
-
-    const userMsg: PanelMessage = { id: nextId(), role: "user", content: text };
-    setState({ ...state, messages: [...state.messages, userMsg], busy: true });
-    persistMessage(panel, "user", text);
 
     const roleDef = allRoles.find((r) => r.id === state.roleId);
     const systemContent = [
@@ -210,6 +218,22 @@ export default function HomePage() {
     ]
       .filter(Boolean)
       .join("\n\n");
+
+    const historyChars = state.messages.reduce((acc, m) => acc + m.content.length, 0);
+    const totalChars = systemContent.length + historyChars + text.length;
+    const threshold = CONTEXT_SIZE_WARNING_THRESHOLD[state.provider] ?? 150000;
+
+    if (totalChars > threshold) {
+      const proceed = window.confirm(
+        `El contexto de este mensaje es grande (~${Math.round(totalChars / 1000)}k caracteres) ` +
+          `y ${state.provider} puede truncarlo sin avisar si supera su ventana real. ¿Enviar igual?`
+      );
+      if (!proceed) return;
+    }
+
+    const userMsg: PanelMessage = { id: nextId(), role: "user", content: text };
+    setState({ ...state, messages: [...state.messages, userMsg], busy: true });
+    persistMessage(panel, "user", text);
 
     try {
       const res = await fetch("/api/chat", {
