@@ -461,6 +461,15 @@ creación deliberada de archivo nuevo, nunca inventar rutas, no volver a
 pedir el árbol, y decir explícitamente si no hay archivo adecuado para la
 tarea.
 
+**Verificación en vivo confirmada:** se interceptó el `systemContent` real
+inmediatamente antes del `fetch` a `/api/chat` (mostrado en pantalla, no en
+consola, por limitación de iOS Safari standalone sin devtools) contra un
+proyecto real (`Spk_Alchemy`, 34 paths). El bloque
+`=== ÍNDICE DE ARCHIVOS DEL REPOSITORIO (AUTORITATIVO) ===` llegó completo,
+con las 5 reglas intactas y en la posición correcta (después del contexto
+del proyecto, antes de `CODE_INTAKE_INSTRUCTION`). La intercepción de debug
+ya se removió del código tras confirmar esto.
+
 ## 23. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
