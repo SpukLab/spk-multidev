@@ -272,16 +272,32 @@ export function Panel({
                   {m.content}
                 </div>
                 {m.role === "assistant" && (
-                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                  <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap", alignItems: "center" }}>
                     <button
                       onClick={() => setTemplateOpenFor(templateOpenFor === m.id ? null : m.id)}
                       style={smallButtonStyle}
                     >
                       Enviar al otro panel →
                     </button>
-                    <button onClick={() => onOpenInIntake(m.content)} style={smallButtonStyle}>
-                      Abrir en Code Intake
-                    </button>
+                    {(() => {
+                      // Chequeo liviano (sin correr el parser completo) para
+                      // saber si este mensaje trae bloques FILE: aplicables
+                      // vía Code Intake — independiente de qué proveedor lo
+                      // haya generado (sección "Multi-Agent Execution MVP").
+                      const hasApplicableCode = /^FILE:\s*.+$/m.test(m.content);
+                      return (
+                        <button
+                          onClick={() => onOpenInIntake(m.content)}
+                          style={
+                            hasApplicableCode
+                              ? { ...smallButtonStyle, background: "var(--spk-active-bg)", fontWeight: 600 }
+                              : smallButtonStyle
+                          }
+                        >
+                          {hasApplicableCode ? "📦 Código listo — abrir en Code Intake" : "Abrir en Code Intake"}
+                        </button>
+                      );
+                    })()}
                   </div>
                 )}
                 {templateOpenFor === m.id && (
