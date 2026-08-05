@@ -296,6 +296,14 @@ export default function HomePage() {
     setState({ ...state, messages: [...state.messages, userMsg], busy: true });
     persistMessage(panel, "user", text);
 
+    // INTERCEPCIÓN TEMPORAL DE VERIFICACIÓN — imprime el system message
+    // exacto, tal cual queda armado, inmediatamente antes del fetch real a
+    // /api/chat. No reconstruye ni infiere nada: es el mismo `systemContent`
+    // que se manda. Sacar una vez verificado.
+    console.log("=== SYSTEM MESSAGE EXACTO (antes de fetch a /api/chat) ===");
+    console.log(systemContent);
+    console.log("=== FIN SYSTEM MESSAGE ===");
+
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
