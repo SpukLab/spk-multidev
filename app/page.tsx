@@ -89,6 +89,10 @@ export default function HomePage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
+  // INTERCEPCIÓN TEMPORAL DE VERIFICACIÓN — el systemContent exacto queda
+  // visible en pantalla (sin devtools, para poder leerlo/copiarlo desde
+  // iPhone). Sacar una vez verificado.
+  const [debugSystemPrompt, setDebugSystemPrompt] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeys, setApiKeys] = useState<StoredApiKeys>({});
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
@@ -296,13 +300,10 @@ export default function HomePage() {
     setState({ ...state, messages: [...state.messages, userMsg], busy: true });
     persistMessage(panel, "user", text);
 
-    // INTERCEPCIÓN TEMPORAL DE VERIFICACIÓN — imprime el system message
-    // exacto, tal cual queda armado, inmediatamente antes del fetch real a
-    // /api/chat. No reconstruye ni infiere nada: es el mismo `systemContent`
-    // que se manda. Sacar una vez verificado.
-    console.log("=== SYSTEM MESSAGE EXACTO (antes de fetch a /api/chat) ===");
-    console.log(systemContent);
-    console.log("=== FIN SYSTEM MESSAGE ===");
+    // INTERCEPCIÓN TEMPORAL DE VERIFICACIÓN — el systemContent exacto,
+    // tal cual queda armado, inmediatamente antes del fetch real a
+    // /api/chat. No reconstruye ni infiere nada. Sacar una vez verificado.
+    setDebugSystemPrompt(systemContent);
 
     try {
       const res = await fetch("/api/chat", {
@@ -550,6 +551,49 @@ export default function HomePage() {
         knownFilePaths={knownFilePaths}
       />
 
+      {debugSystemPrompt && (
+        <div
+          style={{
+            position: "fixed",
+            inset: "5%",
+            zIndex: 999,
+            background: "#0a0a0f",
+            border: "2px solid var(--spk-cyan)",
+            borderRadius: 12,
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+            <strong style={{ color: "var(--spk-cyan)", fontSize: 13 }}>
+              System message exacto ({debugSystemPrompt.length} caracteres)
+            </strong>
+            <button
+              onClick={() => setDebugSystemPrompt(null)}
+              style={{ background: "none", border: "1px solid var(--spk-border)", color: "#fff", borderRadius: 6, padding: "2px 10px" }}
+            >
+              Cerrar
+            </button>
+          </div>
+          <textarea
+            readOnly
+            value={debugSystemPrompt}
+            style={{
+              flex: 1,
+              width: "100%",
+              background: "#111",
+              color: "#0f0",
+              fontFamily: "monospace",
+              fontSize: 11,
+              padding: 8,
+              border: "1px solid var(--spk-border)",
+              borderRadius: 8,
+            }}
+            onFocus={(e) => e.target.select()}
+          />
+        </div>
+      )}
     </main>
   );
 }
