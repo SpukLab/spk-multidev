@@ -20,7 +20,8 @@ export interface ResolvedFile {
 export async function resolveInstructions(
   ref: RepoRef,
   instructions: IntakeInstruction[],
-  token?: string
+  token?: string,
+  knownFilePaths: string[] = []
 ): Promise<ResolvedFile[]> {
   const results: ResolvedFile[] = [];
 
@@ -38,6 +39,29 @@ export async function resolveInstructions(
 
     if (instr.action === "write") {
       const oldContent = await fetchFileContent(ref, instr.path, token);
+
+      // Endurecido: si el modelo nunca vio el árbol real del repo, puede
+      // "adivinar" un path que no coincide con el archivo real (mismo
+      // nombre, carpeta distinta) — sin este chequeo, se crearía un
+      // duplicado en silencio. Se rechaza y se pide revisión manual en vez
+      // de aplicar a ciegas (mismo criterio ya usado para ACTION: patch).
+      if (oldContent === null && knownFilePaths.length > 0) {
+        const basename = instr.path.split("/").pop();
+        const collision = knownFilePaths.find(
+          (p) => p !== instr.path && p.split("/").pop() === basename
+        );
+        if (collision) {
+          results.push({
+            path: instr.path,
+            action: "write",
+            oldContent: null,
+            newContent: null,
+            error: `Ya existe un archivo llamado "${basename}" en "${collision}", pero este bloque apunta a "${instr.path}" (que no existe). Probablemente el modelo no vio el path real — revisar manualmente antes de commitear.`,
+          });
+          continue;
+        }
+      }
+
       results.push({
         path: instr.path,
         action: "write",

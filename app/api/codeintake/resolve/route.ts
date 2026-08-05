@@ -5,12 +5,13 @@ import { getErrorMessage } from "@/lib/errors";
 
 export async function POST(req: NextRequest) {
   try {
-    const { rawText, owner, repo, branch, githubToken } = (await req.json()) as {
+    const { rawText, owner, repo, branch, githubToken, knownFilePaths } = (await req.json()) as {
       rawText: string;
       owner: string;
       repo: string;
       branch?: string;
       githubToken?: string;
+      knownFilePaths?: string[];
     };
 
     if (!rawText || !owner || !repo) {
@@ -21,7 +22,12 @@ export async function POST(req: NextRequest) {
     }
 
     const instructions = parseCodeIntake(rawText);
-    const resolved = await resolveInstructions({ owner, repo, branch }, instructions, githubToken);
+    const resolved = await resolveInstructions(
+      { owner, repo, branch },
+      instructions,
+      githubToken,
+      knownFilePaths
+    );
 
     return NextResponse.json({ resolved });
   } catch (err: unknown) {

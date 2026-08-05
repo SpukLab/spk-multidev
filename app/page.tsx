@@ -81,6 +81,11 @@ export default function HomePage() {
   const [contextText, setContextText] = useState("");
   const [contextSource, setContextSource] = useState<string | null>(null);
   const [contextExpanded, setContextExpanded] = useState(false);
+  // Árbol real de archivos del repo — reutiliza listRepoTree (ya existente,
+  // usado hasta ahora solo por Limpieza Masiva). Se conecta acá al flujo de
+  // "Cargar proyecto" para que el modelo reciba paths reales, no solo el
+  // texto de CONTEXT_BASE.md (ver Auditoría de flujo Contexto→Modelo→Code Intake).
+  const [knownFilePaths, setKnownFilePaths] = useState<string[]>([]);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
@@ -127,11 +132,34 @@ export default function HomePage() {
         body: JSON.stringify({ owner, repo, branch, githubToken: apiKeys.github }),
       });
       const ctxData = await ctxRes.json();
-      setContextText(ctxData.content ?? "");
+
+      // Reusa /api/github/tree (ya existente, hasta ahora solo llamado desde
+      // Limpieza Masiva) para que el modelo también reciba los paths reales
+      // del repo, no solo el texto de CONTEXT_BASE.md/README.
+      let filePaths: string[] = [];
+      try {
+        const treeRes = await fetch("/api/github/tree", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ owner, repo, branch, githubToken: apiKeys.github }),
+        });
+        const treeData = await treeRes.json();
+        filePaths = treeData.files ?? [];
+      } catch {
+        // Si falla el árbol, seguimos igual solo con el texto de contexto —
+        // no bloquea "Cargar proyecto" por esto.
+      }
+      setKnownFilePaths(filePaths);
+
+      const fileListBlock =
+        filePaths.length > 0
+          ? `\n\nArchivos reales en el repo (${filePaths.length}):\n${filePaths.join("\n")}`
+          : "";
+      setContextText((ctxData.content ?? "") + fileListBlock);
       setContextSource(ctxData.source ?? null);
 
       const contextStatusMsg = ctxData.source
-        ? `Contexto cargado desde ${ctxData.source} (${(ctxData.content ?? "").length} caracteres).`
+        ? `Contexto cargado desde ${ctxData.source} (${(ctxData.content ?? "").length} caracteres) + ${filePaths.length} paths reales del repo.`
         : "No se encontró CONTEXT_BASE.md ni README.md en el repo.";
 
       // Nunca ocultar un error real de Supabase detrás del status del
@@ -478,6 +506,7 @@ export default function HomePage() {
         onChangeRepo={setRepo}
         onChangeBranch={setBranch}
         githubToken={apiKeys.github}
+        knownFilePaths={knownFilePaths}
       />
 
     </main>

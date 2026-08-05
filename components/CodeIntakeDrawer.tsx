@@ -21,6 +21,7 @@ interface CodeIntakeDrawerProps {
   onChangeRepo: (v: string) => void;
   onChangeBranch: (v: string) => void;
   githubToken?: string;
+  knownFilePaths?: string[];
 }
 
 export function CodeIntakeDrawer({
@@ -32,6 +33,7 @@ export function CodeIntakeDrawer({
   onChangeRepo,
   onChangeBranch,
   githubToken,
+  knownFilePaths,
 }: CodeIntakeDrawerProps) {
   const [resolved, setResolved] = useState<ResolvedFile[] | null>(null);
   const [expandedPath, setExpandedPath] = useState<string | null>(null);
@@ -46,7 +48,7 @@ export function CodeIntakeDrawer({
       const res = await fetch("/api/codeintake/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText, owner, repo, branch, githubToken }),
+        body: JSON.stringify({ rawText, owner, repo, branch, githubToken, knownFilePaths }),
       });
       const data = await res.json();
       if (data.error) {
