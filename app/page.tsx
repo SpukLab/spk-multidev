@@ -151,11 +151,12 @@ export default function HomePage() {
       }
       setKnownFilePaths(filePaths);
 
-      const fileListBlock =
-        filePaths.length > 0
-          ? `\n\nArchivos reales en el repo (${filePaths.length}):\n${filePaths.join("\n")}`
-          : "";
-      setContextText((ctxData.content ?? "") + fileListBlock);
+      // El listado ya no se concatena como texto descriptivo en contextText —
+      // se arma como bloque normativo directo en sendMessage, a partir de
+      // knownFilePaths, justo antes de CODE_INTAKE_INSTRUCTION (ver auditoría
+      // de assembly de prompt: posición + framing importan tanto como la
+      // presencia del dato).
+      setContextText(ctxData.content ?? "");
       setContextSource(ctxData.source ?? null);
 
       const contextStatusMsg = ctxData.source
@@ -238,10 +239,42 @@ export default function HomePage() {
     const setState = panel === "left" ? setLeft : setRight;
 
     const roleDef = allRoles.find((r) => r.id === state.roleId);
+
+    // Bloque normativo del índice de archivos — no descriptivo. Se arma acá
+    // (no en handleLoadProject) y se ubica justo antes de
+    // CODE_INTAKE_INSTRUCTION a propósito: es la instrucción que consume
+    // paths FILE:, así que el índice tiene que estar pegado a ella, no
+    // diluido en la prosa de contextText (ver auditoría de LLM-perspective
+    // prompt assembly).
+    const fileIndexBlock =
+      knownFilePaths.length > 0
+        ? [
+            "=== ÍNDICE DE ARCHIVOS DEL REPOSITORIO (AUTORITATIVO) ===",
+            "Esta es la lista completa y autoritativa de archivos que existen en este",
+            "repositorio ahora mismo. No es descriptiva ni parcial — es la fuente de",
+            "verdad sobre qué archivos existen.",
+            "",
+            "Reglas obligatorias:",
+            "- Todo path que uses en un bloque FILE: debe pertenecer a este índice,",
+            "  salvo que estés creando un archivo genuinamente nuevo (ACTION: write",
+            "  de una ruta que no aparece en la lista, a propósito).",
+            "- Nunca inventes ni asumas rutas de archivos que no estén en este índice.",
+            "- No vuelvas a pedir el árbol de archivos del repositorio — ya lo tenés",
+            "  completo acá abajo.",
+            "- Si no existe ningún archivo adecuado para la tarea pedida, decilo",
+            "  explícitamente en vez de inventar una ruta.",
+            "",
+            `Archivos (${knownFilePaths.length}):`,
+            ...knownFilePaths,
+            "=== FIN DEL ÍNDICE ===",
+          ].join("\n")
+        : null;
+
     const systemContent = [
       roleDef?.systemPrompt,
       state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
       contextText ? `Contexto del proyecto (${contextSource}):\n${contextText}` : null,
+      fileIndexBlock,
       CODE_INTAKE_INSTRUCTION,
     ]
       .filter(Boolean)

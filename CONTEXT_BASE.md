@@ -439,11 +439,27 @@ paths al generar `ACTION: write`. La función que sí lista archivos reales
 (`listRepoTree`, ya existente) estaba conectada únicamente a Limpieza
 Masiva. Se resolvió **reutilizando esa misma función, sin escribir código
 nuevo**: `handleLoadProject` ahora también llama a `/api/github/tree` y
-adjunta la lista de paths reales al `contextText` que ya se manda a
-cualquier modelo. Además, `ACTION: write` en `resolveInstructions` ahora
-rechaza (con aviso, no en silencio) crear un archivo nuevo si detecta que
-ya existe un archivo con el mismo nombre en otra ruta del árbol real —
-mismo criterio ya usado para `ACTION: patch` cuando `FIND` no matchea.
+adjunta la lista de paths reales al contexto que se manda a cualquier
+modelo. Además, `ACTION: write` en `resolveInstructions` ahora rechaza (con
+aviso, no en silencio) crear un archivo nuevo si detecta que ya existe un
+archivo con el mismo nombre en otra ruta del árbol real — mismo criterio ya
+usado para `ACTION: patch` cuando `FIND` no matchea.
+
+**Actualización posterior — de descriptivo a normativo (ver auditoría LLM-
+perspective de assembly de prompt):** se detectó que aunque el árbol de
+archivos llegaba al modelo, lo hacía como dato descriptivo diluido en la
+prosa de `contextText`, sin ninguna instrucción que le dijera al modelo que
+debía tratarlo como autoritativo — explicando por qué un modelo podía
+igual responder "necesito el árbol del repositorio" pese a tenerlo en el
+prompt. Se resolvió **sin tocar arquitectura ni transporte**, solo el
+armado del prompt: el listado ya no se concatena en `contextText` (armado
+en `handleLoadProject`), sino que se construye como bloque normativo
+separado dentro de `sendMessage`, justo antes de `CODE_INTAKE_INSTRUCTION`
+(la instrucción que efectivamente consume paths `FILE:`), con reglas
+explícitas: es autoritativo, todo path debe pertenecer al índice salvo
+creación deliberada de archivo nuevo, nunca inventar rutas, no volver a
+pedir el árbol, y decir explícitamente si no hay archivo adecuado para la
+tarea.
 
 ## 23. Pendiente de definir en próxima sesión
 
