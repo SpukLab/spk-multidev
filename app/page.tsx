@@ -34,11 +34,11 @@ interface StoredMessage {
   content: string;
 }
 
-function initialPanelState(provider: string, model: string): PanelState {
+function initialPanelState(provider: string, model: string, roleId: string = "none"): PanelState {
   return {
     provider,
     model,
-    roleId: "none",
+    roleId,
     messages: [],
     busy: false,
     collapsed: false,
@@ -57,7 +57,7 @@ export default function HomePage() {
     initialPanelState("nvidia", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
   );
   const [right, setRight] = useState<PanelState>(
-    initialPanelState("nvidia", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
+    initialPanelState("nvidia", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning", "implementador")
   );
 
   const [intakeRawText, setIntakeRawText] = useState("");
