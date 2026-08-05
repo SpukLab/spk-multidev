@@ -320,7 +320,7 @@ owner/repo con un tap en vez de tipearlo a mano.
 desactualizada tras remover el Basic Auth global — ver nota ahí: la
 contraseña ahora protege solo las acciones destructivas de limpieza.
 
-## 20. Integración con OpenHands (tareas asíncronas de repo) — REVISADA
+## 20. Integración con OpenHands (Execution Adapter opcional, no el flujo principal) — REVISADA
 
 Problema: tareas complejas de repositorio (delegadas a OpenHands) tardan
 minutos — incompatible con el modelo de request/response síncrono y los
@@ -371,15 +371,67 @@ cargarse como `openai/nvidia/<nombre-real>` (no `nvidia/<nombre-real>` a
 secas) — sin el prefijo `openai/`, tira
 `BadRequestError: LLM Provider NOT provided`.
 
-**Exposición pública sin costo**: en vez de un VPS pago, se usa **Cloudflare
-Tunnel** corriendo en la PC del usuario (Windows + Docker Desktop) para
-exponer `localhost:3000` a una URL pública que Vercel pueda alcanzar.
+**Exposición pública sin costo (actualizado — ya no Cloudflare Tunnel)**: se
+probó primero con Cloudflare Tunnel (quick tunnel), pero se **abandonó** por
+inestabilidad real en uso (desconexiones tipo "control stream encountered a
+failure") y porque genera una URL nueva en cada reinicio. Se migró a
+**ngrok**, usando su "dev domain" gratuito y fijo — la URL no cambia entre
+reinicios, lo que elimina la necesidad de re-pegar `OPENHANDS_BASE_URL` en
+Vercel cada vez. Sigue corriendo en la PC del usuario (Windows + Docker
+Desktop) — la dependencia de la notebook personal (y de que no entre en
+suspensión) sigue siendo una limitación operativa real y sin resolver.
 
 **Tablas** (`supabase/schema_agent_jobs.sql`): sin cambios — `agent_jobs` y
 `agent_job_events`, RLS lectura pública / escritura server-side, agregadas
 a `supabase_realtime`.
 
-## 21. Pendiente de definir en próxima sesión
+## 22. Ejecución multi-agente sin PC: Code Intake como ruta default, OpenHands como Execution Adapter opcional — RATIFICADA
+
+**Contexto de esta decisión:** tras auditar el proyecto completo (ver
+`SPK_MultiDev_Auditoria_Arquitectonica.md`), se identificó una ambigüedad
+nunca resuelta: el objetivo original nunca declaró explícitamente cuál de
+las dos rutas para producir cambios de código — Code Intake (vía cualquier
+modelo de chat) u OpenHands (agente autónomo con sandbox real) — es la
+**ruta principal**. En la práctica, la integración de OpenHands terminó
+absorbiendo la atención de varias sesiones de debugging, dando la impresión
+de ser el camino "serio", cuando en realidad **Code Intake ya cubre el caso
+de uso central del hub** (desarrollar sin depender de una PC) sin ninguna de
+las fragilidades operativas de OpenHands.
+
+**Se ratifica formalmente:**
+
+- **Code Intake es la ruta default.** Cualquier modelo conectado al hub
+  (Claude, NVIDIA NIM, ChatGPT) ya recibe la instrucción de convención
+  `FILE:`/`ACTION:` en su system prompt (sección 7), sin importar el
+  proveedor — esto ya estaba construido, solo nunca se había declarado como
+  la vía principal. No requiere PC, no requiere Docker, no requiere ningún
+  proceso corriendo fuera de Vercel/Supabase/el navegador.
+- **OpenHands pasa a ser un "Execution Adapter" opcional** — se usa
+  específicamente cuando la tarea necesita *ejecutar* algo de verdad
+  (correr tests, instalar dependencias, exploración autónoma multi-archivo
+  con terminal real), no cuando alcanza con que un modelo *escriba* el
+  cambio y el hub lo commitee. Sigue totalmente disponible y funcional
+  (sección 20), pero deja de ser la única vía práctica para delegar código.
+- **Cambios de esta ratificación (Sprint "Multi-Agent Execution MVP"):**
+  1. Panel B arranca con el rol `Implementador` por default (antes: `Ninguno`
+     en ambos paneles) — baja la fricción de armar manualmente un panel
+     listo para generar código.
+  2. Aviso (no bloqueante) de tamaño de contexto antes de enviar un mensaje,
+     con umbral más conservador para NIM que para Anthropic/OpenAI — pieza
+     que ya estaba speceada en la sección 11 original y nunca se había
+     implementado; ahora previene truncamientos silenciosos al usar un
+     segundo modelo de código además de Claude.
+  3. El botón "Abrir en Code Intake" se resalta visualmente cuando el
+     mensaje ya contiene bloques `FILE:` aplicables, sin importar qué
+     proveedor lo generó — mejora de descubribilidad, no funcionalidad
+     nueva (el parser ya sabía detectar esto).
+  4. Esta misma sección de documentación, ratificando el cambio de
+     jerarquía entre las dos rutas.
+- **Nada de esto tocó el código de OpenHands, el relay, ni el esquema de
+  `agent_jobs`/`agent_job_events`** — sigue intacto y disponible tal cual
+  quedó documentado en la sección 20.
+
+## 23. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
