@@ -208,6 +208,19 @@ evitar retomes evitables.
   el hub deja de ser stateless y pasa a requerir una capa de datos
   persistente desde v1.
   **Backend elegido: Supabase (Postgres)** — el usuario ya tenía cuenta
+
+**Limitación operativa descubierta en producción (no anticipada
+originalmente):** el proyecto de Supabase (tier gratuito) **se pausa
+automáticamente tras ~1 semana sin actividad**. Cuando esto pasa, cualquier
+operación server-side contra Supabase (`/api/projects`, `/api/sessions`,
+etc.) falla con `TypeError: fetch failed` — un error de red genérico que no
+menciona "pausado" en ningún lado, así que no es obvio de diagnosticar sin
+chequear el estado del proyecto directamente en Supabase (`status:
+INACTIVE` en vez de `ACTIVE_HEALTHY`). Solución: `restore_project` (vía
+dashboard de Supabase o el conector MCP) — reactiva en 1-3 minutos, sin
+pérdida de datos (las tablas y su contenido persisten intactos durante la
+pausa). Si el hub pasa mucho tiempo sin usarse, esto va a repetirse — no
+hay forma de evitarlo sin pasar a un plan pago de Supabase.
   activa; encaja mejor que Vercel KV/Redis porque el esquema necesario
   (sesiones, historial de mensajes, cola de Code Intake) es relacional, no
   clave-valor efímero. Esquema inicial en `supabase/schema.sql`. Acceso
