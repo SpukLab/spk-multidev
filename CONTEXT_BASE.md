@@ -483,7 +483,60 @@ con las 5 reglas intactas y en la posición correcta (después del contexto
 del proyecto, antes de `CODE_INTAKE_INSTRUCTION`). La intercepción de debug
 ya se removió del código tras confirmar esto.
 
-## 23. Pendiente de definir en próxima sesión
+## 24. Event Canon — vocabulario de eventos del Hub, base para persistencia por eventos — RATIFICADA
+
+**Contexto de esta decisión:** al diseñar la evolución del hub hacia un "sistema operativo de conocimiento" (Task → Knowledge Layer → Context Builder → Loop iterativo), surgió una pregunta previa más fundamental: ¿el estado del hub debería ser mutable (tablas actualizadas con `UPDATE`) o derivarse de un log de eventos append-only? Se analizó explícitamente (documento `Analisis_Task_Como_Event_Stream.md`) si el modelo de `Task` puede representarse como una proyección sobre un stream de eventos en vez de estado mutable directo — la respuesta fue sí, con el patrón híbrido estándar: el log de eventos es la única fuente de verdad, las tablas de estado (como `tasks`) son proyecciones derivadas y reconstruibles, nunca la verdad en sí.
+
+**Por qué esto no es una moda importada:** el propio proyecto ya había inventado este patrón, en miniatura, para OpenHands — el relay poll-ea `agent_job_events` y deriva si un job está `completed`. Formalizar esto para el resto del hub es generalizar algo que ya existía, no copiar una tendencia externa.
+
+**Se ratifica el orden de implementación** (distinto al que se había planteado originalmente, que empezaba por `Task`):
+
+```
+Sprint 0 → Event Canon (CERRADO — este documento)
+Sprint 1 → Event Log (tabla append-only, sin inteligencia, solo registrar)
+Sprint 2 → Task (como proyección derivada de eventos, nunca como tabla mutable de origen)
+Sprint 3 → Knowledge Layer (extrae de Tasks y eventos)
+Sprint 4 → Context Builder (empieza a decidir qué mandar al modelo)
+Sprint 5 → Loop (automatizar partes del flujo, con los límites de la sección 8
+           del documento de diseño de Knowledge Hub siempre vigentes)
+```
+
+**Motivo del reordenamiento:** si `Task` se construye primero como tabla mutable y después se decide migrar a proyección de eventos, esa migración requiere reconstruir retroactivamente un pasado que nunca se registró como eventos — no se puede. Si el Event Log va primero, `Task` nace ya siendo una proyección, sin nada que migrar nunca.
+
+**El canon completo (32 eventos en 7 categorías: Conversation, Task, Knowledge,
+Development, Context, AI, Execution), las 5 reglas del canon, y el envelope
+común de campos (`eventId`, `timestamp`, `projectId`, `entityId`, `eventType`,
+`actor`, `source`, `version`, `payload`) quedan documentados en
+`Sprint0_Event_Canon.md`** — no se duplica acá para no tener dos fuentes de
+verdad del mismo contrato. Puntos destacados de ese documento:
+
+- **Regla 5 (nueva):** no se definen eventos para capacidades que todavía no
+  existen — un evento entra al canon solo cuando ya hay (o está por haber)
+  un emisor real. Por esto se descartaron explícitamente `ResponseChunkReceived`
+  y `ResponseCancelled` (no hay streaming ni cancelación real hoy).
+- **Gaps reales encontrados al auditar el canon contra el código actual:**
+  faltaban `RepoDeleted` (borrar un repo no genera commit — sin este evento
+  la acción más irreversible del hub quedaría invisible), `PatchRejected`
+  (ya existe el rechazo real en `resolve.ts`, tanto por `FIND` que no
+  matchea como por el endurecimiento de `ACTION: write`), `FilesDeleted`,
+  y `KnowledgeSuperseded`.
+- **Categoría `Execution` agregada** para representar OpenHands a nivel Hub
+  (`ExecutionRequested`/`Completed`/`Failed`) — los eventos internos finos
+  de OpenHands siguen viviendo en `agent_job_events`, no bubblean al canon
+  general salvo que algún consumidor futuro demuestre necesitarlo.
+- **Campo `source` transversal a todo evento** — de qué sistema es
+  causalmente responsable cada hecho (`user`/`Claude`/`NIM`/`GPT`/
+  `OpenHands`/`GitHub`/`System`). Sin este campo, preguntas de atribución
+  futura ("¿cuántos commits vinieron de NIM?") serían irreconstruibles.
+- **`TaskAbandoned`, no `TaskRejected`** — distinción conceptual: una tarea
+  puede dejar de tener sentido (cambió la arquitectura, se descubrió algo
+  mejor) sin que eso implique que alguien la evaluó y la rechazó.
+
+**Sprint 1 (Event Log) queda autorizado a empezar.** Sigue sin tocarse
+ninguna pieza ya construida — Code Intake, Supabase, OpenHands, GitHub —
+todo esto se construye encima, no en reemplazo.
+
+## 25. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
