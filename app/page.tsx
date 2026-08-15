@@ -6,6 +6,7 @@ import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
 import { TasksDrawer } from "@/components/TasksDrawer";
+import { KnowledgeDrawer } from "@/components/KnowledgeDrawer";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
@@ -112,6 +113,7 @@ export default function HomePage() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
   const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
+  const [knowledgeDrawerOpen, setKnowledgeDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeys, setApiKeys] = useState<StoredApiKeys>({});
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
@@ -122,6 +124,32 @@ export default function HomePage() {
   }, []);
 
   const allRoles = [...defaultRoles, ...customRoles];
+
+  async function handleCaptureKnowledge(params: { content: string; sourceMessageId?: string; type: string; title: string }) {
+    if (!projectId) return;
+    try {
+      const res = await fetch("/api/knowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sessionId: currentSessionId,
+          sourceMessageId: params.sourceMessageId ?? null,
+          type: params.type,
+          title: params.title,
+          content: params.content,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        // El evento Tier A no se pudo persistir — no se guardó, avisamos
+        // en vez de fingir que funcionó.
+        alert(`No se pudo capturar el conocimiento: ${data.error}`);
+      }
+    } catch (err) {
+      alert(`Error al capturar conocimiento: ${err instanceof Error ? err.message : "desconocido"}`);
+    }
+  }
 
   async function handleLoadProject() {
     if (!owner || !repo) {
@@ -234,16 +262,19 @@ export default function HomePage() {
     setRight((s) => ({ ...s, messages: toPanelMsgs("right") }));
   }
 
-  async function persistMessage(panel: "left" | "right", role: "user" | "assistant", content: string) {
-    if (!currentSessionId) return;
+  async function persistMessage(panel: "left" | "right", role: "user" | "assistant", content: string): Promise<string | null> {
+    if (!currentSessionId) return null;
     try {
-      await fetch(`/api/sessions/${currentSessionId}/messages`, {
+      const res = await fetch(`/api/sessions/${currentSessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ panel, role, content }),
       });
+      const data = await res.json();
+      return data.messageId ?? null;
     } catch {
       // Falla silenciosa: no bloquea el chat si la persistencia falla puntualmente.
+      return null;
     }
   }
 
@@ -380,7 +411,13 @@ export default function HomePage() {
       }));
 
       if (!data.error) {
-        persistMessage(panel, "assistant", assistantContent);
+        persistMessage(panel, "assistant", assistantContent).then((messageId) => {
+          if (!messageId) return;
+          setState((prev) => ({
+            ...prev,
+            messages: prev.messages.map((m) => (m.id === assistantMsg.id ? { ...m, dbId: messageId } : m)),
+          }));
+        });
       }
     } catch (err) {
       setState((prev) => ({
@@ -478,6 +515,7 @@ export default function HomePage() {
         sessionsCount={sessions.length}
         onOpenChats={() => setChatsDrawerOpen(true)}
         onOpenTasks={() => setTasksDrawerOpen(true)}
+        onOpenKnowledge={() => setKnowledgeDrawerOpen(true)}
         githubToken={apiKeys.github}
       />
 
@@ -494,6 +532,12 @@ export default function HomePage() {
       <TasksDrawer
         open={tasksDrawerOpen}
         onClose={() => setTasksDrawerOpen(false)}
+        projectId={projectId}
+      />
+
+      <KnowledgeDrawer
+        open={knowledgeDrawerOpen}
+        onClose={() => setKnowledgeDrawerOpen(false)}
         projectId={projectId}
       />
 
@@ -572,6 +616,7 @@ export default function HomePage() {
             onSend={(text) => sendMessage("left", text)}
             onSendToOther={(content, template) => sendToOther("left", content, template)}
             onOpenInIntake={(content) => setIntakeRawText(content)}
+            onCaptureKnowledge={handleCaptureKnowledge}
           />
         )}
 
@@ -620,6 +665,7 @@ export default function HomePage() {
             onSend={(text) => sendMessage("right", text)}
             onSendToOther={(content, template) => sendToOther("right", content, template)}
             onOpenInIntake={(content) => setIntakeRawText(content)}
+            onCaptureKnowledge={handleCaptureKnowledge}
           />
         )}
       </div>

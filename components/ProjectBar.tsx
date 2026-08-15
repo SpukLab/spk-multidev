@@ -26,6 +26,7 @@ interface ProjectBarProps {
   sessionsCount: number;
   onOpenChats: () => void;
   onOpenTasks: () => void;
+  onOpenKnowledge: () => void;
   githubToken?: string;
 }
 
@@ -47,6 +48,7 @@ export function ProjectBar({
   sessionsCount,
   onOpenChats,
   onOpenTasks,
+  onOpenKnowledge,
   githubToken,
 }: ProjectBarProps) {
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
@@ -114,6 +116,9 @@ export function ProjectBar({
         </button>
         <button onClick={onOpenTasks} style={buttonStyle}>
           Tareas
+        </button>
+        <button onClick={onOpenKnowledge} style={buttonStyle}>
+          Knowledge
         </button>
       </div>
 

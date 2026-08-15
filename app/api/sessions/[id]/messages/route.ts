@@ -28,8 +28,8 @@ export async function POST(
     if (!panel || !role || content === undefined) {
       return NextResponse.json({ error: "Faltan panel, role o content." }, { status: 400 });
     }
-    await appendMessage(params.id, panel, role, content);
-    return NextResponse.json({ ok: true });
+    const inserted = await appendMessage(params.id, panel, role, content);
+    return NextResponse.json({ ok: true, messageId: inserted.id });
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });

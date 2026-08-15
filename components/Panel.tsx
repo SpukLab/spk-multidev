@@ -15,6 +15,9 @@ export interface PanelMessage {
   role: "user" | "assistant";
   content: string;
   originLabel?: string;
+  /** id real en Supabase (messages.id) — se completa después de persistir,
+   * usado como source_message_id al capturar Knowledge (Sprint 3). */
+  dbId?: string;
 }
 
 interface ModelOption {
@@ -42,6 +45,7 @@ interface PanelProps {
   onSend: (text: string) => void;
   onSendToOther: (content: string, template: string) => void;
   onOpenInIntake: (content: string) => void;
+  onCaptureKnowledge?: (params: { content: string; sourceMessageId?: string; type: string; title: string }) => void;
 }
 
 export function Panel({
@@ -63,10 +67,14 @@ export function Panel({
   onSend,
   onSendToOther,
   onOpenInIntake,
+  onCaptureKnowledge,
 }: PanelProps) {
   const [input, setInput] = useState("");
   const [template, setTemplate] = useState("");
   const [templateOpenFor, setTemplateOpenFor] = useState<string | null>(null);
+  const [knowledgeCaptureFor, setKnowledgeCaptureFor] = useState<string | null>(null);
+  const [captureType, setCaptureType] = useState("observation");
+  const [captureTitle, setCaptureTitle] = useState("");
 
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(getModelsForProvider(provider));
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -298,6 +306,58 @@ export function Panel({
                         </button>
                       );
                     })()}
+                    {onCaptureKnowledge && (
+                      <button
+                        onClick={() => {
+                          setKnowledgeCaptureFor(knowledgeCaptureFor === m.id ? null : m.id);
+                          setCaptureTitle(m.content.slice(0, 60));
+                        }}
+                        style={smallButtonStyle}
+                      >
+                        💡 Capturar como Knowledge
+                      </button>
+                    )}
+                  </div>
+                )}
+                {knowledgeCaptureFor === m.id && onCaptureKnowledge && (
+                  <div style={{ marginTop: 6, padding: 8, background: "rgba(167,139,250,0.08)", borderRadius: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+                    <select
+                      value={captureType}
+                      onChange={(e) => setCaptureType(e.target.value)}
+                      style={{ padding: 6, background: "#1a1a22", border: "1px solid #333", borderRadius: 6, color: "#fff", fontSize: 12 }}
+                    >
+                      <option value="observation">Observación</option>
+                      <option value="insight">Insight</option>
+                      <option value="decision">Decisión</option>
+                      <option value="hypothesis">Hipótesis</option>
+                      <option value="experiment">Experimento</option>
+                      <option value="pattern">Patrón</option>
+                      <option value="adr_candidate">Candidato a ADR</option>
+                      <option value="rejected_idea">Idea descartada</option>
+                      <option value="open_question">Pregunta abierta</option>
+                      <option value="implementation_note">Nota de implementación</option>
+                      <option value="temporary_note">Nota temporal</option>
+                    </select>
+                    <input
+                      value={captureTitle}
+                      onChange={(e) => setCaptureTitle(e.target.value)}
+                      placeholder="Título (opcional)"
+                      style={{ padding: 6, background: "#1a1a22", border: "1px solid #333", borderRadius: 6, color: "#fff", fontSize: 12 }}
+                    />
+                    <button
+                      onClick={() => {
+                        onCaptureKnowledge({
+                          content: m.content,
+                          sourceMessageId: m.dbId,
+                          type: captureType,
+                          title: captureTitle || m.content.slice(0, 60),
+                        });
+                        setKnowledgeCaptureFor(null);
+                      }}
+                      style={{ padding: 6, background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 12 }}
+                    >
+                      Guardar
+                    </button>
                   </div>
                 )}
                 {templateOpenFor === m.id && (

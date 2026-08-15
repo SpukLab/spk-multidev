@@ -139,17 +139,21 @@ export async function appendMessage(
   panel: "left" | "right",
   role: "system" | "user" | "assistant",
   content: string
-): Promise<void> {
+): Promise<{ id: string }> {
   const supabase = getSupabaseServerClient();
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("messages")
-    .insert({ session_id: sessionId, panel, role, content });
+    .insert({ session_id: sessionId, panel, role, content })
+    .select("id")
+    .single();
   if (error) throw error;
 
   await supabase
     .from("sessions")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", sessionId);
+
+  return data as { id: string };
 }
 
 export async function updateSessionPanels(
