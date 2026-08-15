@@ -798,7 +798,71 @@ resolver después de escribir el código.
 4. Los futuros eventos de Task **no** van a poder ser best-effort — contrato establecido para Sprint 2.
 5. **Sprint 1 no requiere ningún cambio de implementación adicional** después de esta aclaración — es puramente documentación.
 
-## 28. Pendiente de definir en próxima sesión
+## 28. Sprint 2 — Task como proyección: implementado y validado E2E contra producción — RATIFICADA
+
+**Task se implementó exactamente como lo exigía el contrato de la sección
+27: una proyección derivada de eventos Tier A, nunca la fuente de verdad.**
+Tabla `tasks` nueva (proyección), `lib/db/tasks.ts` (única capa que la
+toca), tres rutas API (`/api/tasks`, `/api/tasks/[id]`,
+`/api/tasks/[id]/rebuild`), y `TasksDrawer.tsx` (mismo patrón que
+`ChatsDrawer`, sin rediseñar la interfaz).
+
+**Garantía Tier A real, no solo declarada:** en `createTask` y
+`transitionTask`, el evento (`TaskCreated`/`TaskUpdated`/`TaskCompleted`/
+`TaskAbandoned`) se persiste primero — si `emitEvent()` devuelve `false`
+tras sus 3 reintentos (Sprint 1), la función lanza `TaskTransitionError`
+**antes** de tocar la tabla `tasks`. A diferencia de `RepoDeleted` (que
+avisa pero no puede deshacer un efecto externo ya ocurrido), acá no hay
+ningún efecto externo irreversible — así que la transición se rechaza
+entera, con error real devuelto al cliente (409), nunca un éxito
+silencioso.
+
+**Validación E2E ejecutada contra producción real** (no simulada — con el
+propio usuario operando la UI desde iPhone, y verificación directa contra
+Supabase después de cada paso):
+
+1. Crear Task → confirmado en base real.
+2. Recargar/consultar → persistencia confirmada.
+3. Transicionar a `in_progress` → confirmado.
+4. Recargar → estado proyectado correcto.
+5. Completar → confirmado, estado final `completed`.
+6. Historial de eventos inspeccionado en la propia UI (captura real) →
+   `TaskCreated` → `TaskUpdated` → `TaskCompleted`, orden correcto,
+   timestamps reales.
+7-8. Reconstrucción de proyección: como el sandbox de desarrollo no tiene
+   salida de red hacia `vercel.app` (limitación real del entorno, no del
+   hub), se replicó la misma lógica del reductor de `rebuildTaskProjection`
+   directo en SQL contra los eventos reales — **encontró un hallazgo real
+   de la primera pasada**: `tasks.created_at`/`updated_at` se calculaban
+   con un `now()` separado del timestamp real del evento, con desajustes
+   de 20-90ms. Corregido (`lib/events/emit.ts` acepta un `timestamp`
+   explícito opcional; `createTask`/`transitionTask` calculan un único
+   `now` y lo comparten entre el evento y la proyección). Re-validado con
+   una segunda Task real tras el fix: coincidencia **exacta**, confirmada
+   dos veces contra la base.
+9. Falla de persistencia del evento: no se simuló en producción (hubiera
+   requerido romper Supabase real, riesgo innecesario) — se probó en su
+   lugar con un insert SQL real que viola la restricción NOT NULL de
+   `events`, confirmando que Postgres rechaza el insert sin dejar ningún
+   rastro parcial (0 filas huérfanas verificado), más inspección directa
+   del código que confirma que el `if (!logged) throw` ocurre siempre
+   antes de cualquier `.update()`/`.insert()` sobre `tasks`.
+10. UI mobile validada en vivo, en iPhone real (captura de pantalla): abrir
+    drawer, crear, abrir, cambiar estado, ver historial — los 5 pasos
+    funcionaron sin fricción.
+
+**Limitación de entorno encontrada y documentada:** el sandbox de
+desarrollo de Claude no puede alcanzar `vercel.app` (lista blanca de red
+restringida a dominios de dev-tooling). La validación real de la API en
+producción se hizo en conjunto con el usuario operando la UI real, más
+verificación directa contra Supabase — un método más riguroso que un curl
+aislado, porque valida API y UX mobile al mismo tiempo con datos reales.
+
+**Sprint 2 queda CERRADO**, con un fix real encontrado y corregido durante
+la propia validación (no un defecto que haya quedado pendiente). **Sprint 3
+(Knowledge Layer) no arranca todavía.**
+
+## 29. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
