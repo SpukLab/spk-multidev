@@ -15,11 +15,13 @@ export function CleanupPanel({
   repo,
   branch,
   githubToken,
+  projectId,
 }: {
   owner: string;
   repo: string;
   branch: string;
   githubToken?: string;
+  projectId?: string | null;
 }) {
   const [tab, setTab] = useState<"files" | "repos">("files");
 
@@ -72,7 +74,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/bulk-delete-files", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, repo, branch, paths: Array.from(selectedFiles), password, githubToken }),
+        body: JSON.stringify({ owner, repo, branch, paths: Array.from(selectedFiles), password, githubToken, projectId }),
       });
       const data = await res.json();
       if (data.error) {
@@ -132,7 +134,7 @@ export function CleanupPanel({
       const res = await fetch("/api/github/delete-repos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repos: reposToDelete, confirmText, password, githubToken }),
+        body: JSON.stringify({ repos: reposToDelete, confirmText, password, githubToken, projectId }),
       });
       const data = await res.json();
       if (data.error) {
@@ -140,10 +142,21 @@ export function CleanupPanel({
       } else {
         const ok = data.results.filter((r: { ok: boolean }) => r.ok).length;
         const failed = data.results.filter((r: { ok: boolean }) => !r.ok);
+        // RepoDeleted es el único evento del canon con garantía reforzada
+        // (auditoría de integridad, CONTEXT_BASE §26) — si no se pudo
+        // registrar ni tras reintentar, se lo avisamos acá en vez de
+        // dejarlo pasar en silencio, porque es el único caso donde perder
+        // el evento significa perder el hecho para siempre.
+        const notLogged = data.results.filter(
+          (r: { ok: boolean; eventLogged?: boolean }) => r.ok && r.eventLogged === false
+        );
         setReposStatus(
           `${ok} repo(s) borrado(s).` +
             (failed.length > 0
               ? ` Fallaron: ${failed.map((f: { repo: string; error?: string }) => `${f.repo} (${f.error})`).join(", ")}`
+              : "") +
+            (notLogged.length > 0
+              ? ` ⚠️ Se borraron pero NO se pudo registrar en el historial: ${notLogged.map((f: { repo: string }) => f.repo).join(", ")} — el borrado en GitHub es real e irreversible igual.`
               : "")
         );
         setRepos((prev) => prev?.filter((r) => !selectedRepos.has(r.name)) ?? null);

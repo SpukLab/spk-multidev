@@ -9,11 +9,12 @@ import { emitEvent } from "@/lib/events/emit";
 // (CONTEXT_BASE.md sección 15).
 export async function POST(req: NextRequest) {
   try {
-    const { repos, confirmText, password, githubToken } = (await req.json()) as {
+    const { repos, confirmText, password, githubToken, projectId } = (await req.json()) as {
       repos: { owner: string; name: string }[];
       confirmText: string;
       password?: string;
       githubToken?: string;
+      projectId?: string;
     };
 
     const expectedPassword = process.env.HUB_ACCESS_PASSWORD;
@@ -35,22 +36,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const results: { repo: string; ok: boolean; error?: string }[] = [];
+    const results: { repo: string; ok: boolean; error?: string; eventLogged?: boolean }[] = [];
     for (const r of repos) {
       try {
         await deleteRepo(r.owner, r.name, githubToken);
-        results.push({ repo: r.name, ok: true });
-        // Sin CommitCreated acá — borrar un repo no genera ningún commit,
-        // es una llamada directa a la API de GitHub. Sin este evento la
-        // acción más irreversible del hub quedaría invisible para el
-        // canon (hallazgo explícito de la auditoría, CONTEXT_BASE §24).
-        await emitEvent({
+        // RepoDeleted es el único evento Tier A del canon (auditoría de
+        // integridad, CONTEXT_BASE §26): después de borrar un repo, GitHub
+        // no retiene NADA — ni historial, ni el nombre. Si este evento
+        // específico no se puede registrar (ni tras reintentar), no seguimos
+        // en silencio como con el resto del canon — se lo devolvemos al
+        // cliente para que lo muestre como advertencia real.
+        const eventLogged = await emitEvent({
           eventType: "RepoDeleted",
           actor: "user",
           source: "GitHub",
+          projectId: projectId ?? null,
           entityId: `${r.owner}/${r.name}`,
           payload: { owner: r.owner, repo: r.name },
         });
+        results.push({ repo: r.name, ok: true, eventLogged });
       } catch (err: unknown) {
         results.push({
           repo: r.name,

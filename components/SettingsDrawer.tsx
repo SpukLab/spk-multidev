@@ -266,7 +266,7 @@ export function SettingsDrawer({
 
         {tab === "cleanup" && (
           <div style={{ marginTop: 12 }}>
-            <CleanupPanel owner={owner} repo={repo} branch={branch} githubToken={apiKeys.github} />
+            <CleanupPanel owner={owner} repo={repo} branch={branch} githubToken={apiKeys.github} projectId={projectId} />
           </div>
         )}
 

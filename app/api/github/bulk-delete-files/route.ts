@@ -15,10 +15,11 @@ export async function POST(req: NextRequest) {
       paths: string[];
       password?: string;
       githubToken?: string;
+      projectId?: string;
     };
     owner = body.owner;
     repo = body.repo;
-    const { branch, paths, password, githubToken } = body;
+    const { branch, paths, password, githubToken, projectId } = body;
 
     const expectedPassword = process.env.HUB_ACCESS_PASSWORD;
     if (expectedPassword && password !== expectedPassword) {
@@ -48,6 +49,7 @@ export async function POST(req: NextRequest) {
       eventType: "FilesDeleted",
       actor: "user",
       source: "GitHub",
+      projectId: projectId ?? null,
       entityId: commitSha,
       payload: { owner, repo, paths },
     });
@@ -55,6 +57,7 @@ export async function POST(req: NextRequest) {
       eventType: "CommitCreated",
       actor: "user",
       source: "GitHub",
+      projectId: projectId ?? null,
       entityId: commitSha,
       payload: { owner, repo, filesDeleted: paths.length },
     });
@@ -62,6 +65,7 @@ export async function POST(req: NextRequest) {
       eventType: "PushSucceeded",
       actor: "user",
       source: "GitHub",
+      projectId: projectId ?? null,
       entityId: commitSha,
       payload: { owner, repo },
     });

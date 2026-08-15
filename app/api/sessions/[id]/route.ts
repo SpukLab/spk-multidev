@@ -9,13 +9,12 @@ export async function DELETE(
 ) {
   try {
     await deleteSession(params.id);
-    // Interpretación explícita: hoy borrar una sesión es una eliminación
-    // física (no un soft-archive), pero conceptualmente, desde la
-    // perspectiva del Hub, es el usuario dando por cerrada esa conversación
-    // — se mapea a ConversationArchived del canon (documentado en
-    // CONTEXT_BASE.md sección 24).
+    // Corrección de integridad (CONTEXT_BASE §26): se llamaba
+    // ConversationArchived, pero deleteSession hace un DELETE físico, no un
+    // archivado recuperable — "Archived" era una interpretación, no un
+    // hecho (viola la regla 1 del canon). Renombrado a ConversationDeleted.
     await emitEvent({
-      eventType: "ConversationArchived",
+      eventType: "ConversationDeleted",
       actor: "user",
       source: "user",
       entityId: params.id,

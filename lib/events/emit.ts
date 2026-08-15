@@ -24,27 +24,44 @@ export interface EmitEventParams {
   version?: number;
 }
 
-export async function emitEvent(params: EmitEventParams): Promise<void> {
-  try {
-    const supabase = getSupabaseServerClient();
-    const { error } = await supabase.from("events").insert({
-      project_id: params.projectId ?? null,
-      entity_id: params.entityId ?? null,
-      event_type: params.eventType,
-      actor: params.actor,
-      source: params.source,
-      version: params.version ?? 1,
-      payload: params.payload ?? {},
-    });
-    if (error) {
-      console.error(`[events] Error emitiendo ${params.eventType}:`, error.message);
+export async function emitEvent(params: EmitEventParams): Promise<boolean> {
+  const MAX_ATTEMPTS = 3; // intento original + 2 reintentos
+  const BACKOFF_MS = [300, 900];
+
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const supabase = getSupabaseServerClient();
+      const { error } = await supabase.from("events").insert({
+        project_id: params.projectId ?? null,
+        entity_id: params.entityId ?? null,
+        event_type: params.eventType,
+        actor: params.actor,
+        source: params.source,
+        version: params.version ?? 1,
+        payload: params.payload ?? {},
+      });
+      if (!error) return true;
+      console.error(
+        `[events] Error emitiendo ${params.eventType} (intento ${attempt + 1}/${MAX_ATTEMPTS}):`,
+        error.message
+      );
+    } catch (err) {
+      console.error(
+        `[events] Excepción emitiendo ${params.eventType} (intento ${attempt + 1}/${MAX_ATTEMPTS}):`,
+        err instanceof Error ? err.message : err
+      );
     }
-  } catch (err) {
-    console.error(
-      `[events] Excepción emitiendo ${params.eventType}:`,
-      err instanceof Error ? err.message : err
-    );
+    if (attempt < MAX_ATTEMPTS - 1) {
+      await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
+    }
   }
+
+  // Reintentos agotados. Para la enorme mayoría de eventos (observational o
+  // canonical Tier B, con un registro durable paralelo en GitHub/agent_jobs)
+  // esto es aceptable en silencio — best-effort. La única excepción real es
+  // RepoDeleted (Tier A, sin ningún otro registro posible), que chequea
+  // explícitamente este valor de retorno y avisa al usuario si es false.
+  return false;
 }
 
 /** Mapea el id interno de proveedor al `source` del canon. */
