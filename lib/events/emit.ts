@@ -22,6 +22,15 @@ export interface EmitEventParams {
   entityId?: string | null;
   payload?: Record<string, unknown>;
   version?: number;
+  /**
+   * Fix de validación Sprint 2: si se pasa, se usa este timestamp exacto
+   * en vez del default de la columna — así el evento y la proyección que
+   * se escribe inmediatamente después comparten el mismo instante, en
+   * vez de dos now() calculados en momentos ligeramente distintos
+   * (encontrado en la validación E2E: desajustes de 20-90ms entre el
+   * evento real y la fila de `tasks`).
+   */
+  timestamp?: string;
 }
 
 export async function emitEvent(params: EmitEventParams): Promise<boolean> {
@@ -39,6 +48,7 @@ export async function emitEvent(params: EmitEventParams): Promise<boolean> {
         source: params.source,
         version: params.version ?? 1,
         payload: params.payload ?? {},
+        ...(params.timestamp ? { timestamp: params.timestamp } : {}),
       });
       if (!error) return true;
       console.error(

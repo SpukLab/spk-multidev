@@ -49,6 +49,7 @@ export async function createTask(params: {
 }): Promise<Task> {
   const supabase = getSupabaseServerClient();
   const taskId = crypto.randomUUID();
+  const now = new Date().toISOString();
 
   // Paso 1 (implícito): "abrir una Task" no tiene estado previo que validar.
   // Paso 2: persistir el evento Tier A primero, chequear el retorno.
@@ -58,6 +59,7 @@ export async function createTask(params: {
     source: "user",
     projectId: params.projectId,
     entityId: taskId,
+    timestamp: now,
     payload: {
       title: params.title,
       objective: params.objective ?? null,
@@ -73,7 +75,8 @@ export async function createTask(params: {
     );
   }
 
-  // Paso 3: recién ahora se toca la proyección.
+  // Paso 3: recién ahora se toca la proyección, con el MISMO timestamp
+  // que el evento — así una reconstrucción posterior coincide exacto.
   const { data, error } = await supabase
     .from("tasks")
     .insert({
@@ -83,6 +86,8 @@ export async function createTask(params: {
       objective: params.objective ?? null,
       acceptance_criteria: params.acceptanceCriteria ?? null,
       status: "open",
+      created_at: now,
+      updated_at: now,
     })
     .select()
     .single();
@@ -132,6 +137,7 @@ export async function transitionTask(taskId: string, toStatus: TaskStatus): Prom
 
   const eventType =
     toStatus === "completed" ? "TaskCompleted" : toStatus === "abandoned" ? "TaskAbandoned" : "TaskUpdated";
+  const now = new Date().toISOString();
 
   const logged = await emitEvent({
     eventType,
@@ -139,6 +145,7 @@ export async function transitionTask(taskId: string, toStatus: TaskStatus): Prom
     source: "user",
     projectId: current.project_id,
     entityId: taskId,
+    timestamp: now,
     payload: { field: "status", from: current.status, to: toStatus },
   });
 
@@ -148,7 +155,6 @@ export async function transitionTask(taskId: string, toStatus: TaskStatus): Prom
     );
   }
 
-  const now = new Date().toISOString();
   const update: Partial<Task> = { status: toStatus, updated_at: now };
   if (toStatus === "completed") update.completed_at = now;
   if (toStatus === "abandoned") update.abandoned_at = now;
