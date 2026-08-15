@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, listSessionsWithPreview } from "@/lib/db/sessions";
 import { getErrorMessage } from "@/lib/errors";
+import { emitEvent } from "@/lib/events/emit";
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,6 +24,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Falta projectId." }, { status: 400 });
     }
     const session = await createSession(projectId);
+    await emitEvent({
+      eventType: "ConversationCreated",
+      actor: "user",
+      source: "user",
+      projectId,
+      entityId: session.id,
+    });
     return NextResponse.json({ session });
   } catch (err: unknown) {
     const message = getErrorMessage(err);

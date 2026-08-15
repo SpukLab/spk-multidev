@@ -52,6 +52,27 @@ function nextId() {
   return `msg-${idCounter}`;
 }
 
+// Fire-and-forget: emite un evento client-side vía la única ruta genérica
+// del Event Log (Sprint 1, CONTEXT_BASE.md sección 24). Nunca bloquea ni
+// rompe el flujo real — mismo criterio de failure-behavior que el resto
+// del canon instrumentado server-side.
+function emitClientEvent(params: {
+  eventType: string;
+  actor: "user" | "system";
+  source: string;
+  projectId?: string | null;
+  entityId?: string | null;
+  payload?: Record<string, unknown>;
+}) {
+  fetch("/api/events/emit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  }).catch(() => {
+    // silencioso a propósito — un evento perdido nunca debe interrumpir al usuario
+  });
+}
+
 export default function HomePage() {
   const [left, setLeft] = useState<PanelState>(
     initialPanelState("nvidia", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning")
@@ -115,10 +136,12 @@ export default function HomePage() {
       });
       const projData = await projRes.json();
       let projectStatusMsg = "";
+      let loadedProjectId: string | null = null;
       if (projData.error) {
         projectStatusMsg = `Proyecto no persistido en Supabase: ${projData.error}`;
         setProjectId(null);
       } else {
+        loadedProjectId = projData.project.id;
         setProjectId(projData.project.id);
 
         const sessRes = await fetch(`/api/sessions?projectId=${projData.project.id}`);
@@ -129,7 +152,7 @@ export default function HomePage() {
       const ctxRes = await fetch("/api/github/context", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ owner, repo, branch, githubToken: apiKeys.github }),
+        body: JSON.stringify({ owner, repo, branch, githubToken: apiKeys.github, projectId: loadedProjectId }),
       });
       const ctxData = await ctxRes.json();
 
@@ -284,12 +307,36 @@ export default function HomePage() {
     const totalChars = systemContent.length + historyChars + text.length;
     const threshold = CONTEXT_SIZE_WARNING_THRESHOLD[state.provider] ?? 150000;
 
+    emitClientEvent({
+      eventType: "ContextBuilt",
+      actor: "user",
+      source: "System",
+      projectId,
+      entityId: currentSessionId,
+      payload: {
+        provider: state.provider,
+        totalChars,
+        hasFileIndex: knownFilePaths.length > 0,
+        hasProjectContext: Boolean(contextText),
+      },
+    });
+
     if (totalChars > threshold) {
       const proceed = window.confirm(
         `El contexto de este mensaje es grande (~${Math.round(totalChars / 1000)}k caracteres) ` +
           `y ${state.provider} puede truncarlo sin avisar si supera su ventana real. ¿Enviar igual?`
       );
-      if (!proceed) return;
+      if (!proceed) {
+        emitClientEvent({
+          eventType: "ContextRejected",
+          actor: "user",
+          source: "user",
+          projectId,
+          entityId: currentSessionId,
+          payload: { provider: state.provider, totalChars, threshold },
+        });
+        return;
+      }
     }
 
     const userMsg: PanelMessage = { id: nextId(), role: "user", content: text };
@@ -304,6 +351,8 @@ export default function HomePage() {
           provider: state.provider,
           model: state.model,
           apiKey: apiKeys[state.provider as keyof StoredApiKeys],
+          projectId,
+          sessionId: currentSessionId,
           messages: [
             ...(systemContent ? [{ role: "system", content: systemContent }] : []),
             ...state.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -488,10 +537,28 @@ export default function HomePage() {
               setLeft((s) => ({ ...s, sequentialThinking: !s.sequentialThinking }))
             }
             onToggleCollapse={() => setLeft((s) => ({ ...s, collapsed: !s.collapsed }))}
-            onChangeProvider={(p) =>
-              setLeft((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
-            }
-            onChangeModel={(m) => setLeft((s) => ({ ...s, model: m }))}
+            onChangeProvider={(p) => {
+              emitClientEvent({
+                eventType: "ModelSelected",
+                actor: "user",
+                source: "user",
+                projectId,
+                entityId: "left",
+                payload: { field: "provider", from: left.provider, to: p },
+              });
+              setLeft((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }));
+            }}
+            onChangeModel={(m) => {
+              emitClientEvent({
+                eventType: "ModelSelected",
+                actor: "user",
+                source: "user",
+                projectId,
+                entityId: "left",
+                payload: { field: "model", from: left.model, to: m },
+              });
+              setLeft((s) => ({ ...s, model: m }));
+            }}
             onChangeRole={(r) => setLeft((s) => ({ ...s, roleId: r }))}
             onSend={(text) => sendMessage("left", text)}
             onSendToOther={(content, template) => sendToOther("left", content, template)}
@@ -518,10 +585,28 @@ export default function HomePage() {
               setRight((s) => ({ ...s, sequentialThinking: !s.sequentialThinking }))
             }
             onToggleCollapse={() => setRight((s) => ({ ...s, collapsed: !s.collapsed }))}
-            onChangeProvider={(p) =>
-              setRight((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }))
-            }
-            onChangeModel={(m) => setRight((s) => ({ ...s, model: m }))}
+            onChangeProvider={(p) => {
+              emitClientEvent({
+                eventType: "ModelSelected",
+                actor: "user",
+                source: "user",
+                projectId,
+                entityId: "right",
+                payload: { field: "provider", from: right.provider, to: p },
+              });
+              setRight((s) => ({ ...s, provider: p, model: getModelsForProvider(p)[0]?.id ?? "" }));
+            }}
+            onChangeModel={(m) => {
+              emitClientEvent({
+                eventType: "ModelSelected",
+                actor: "user",
+                source: "user",
+                projectId,
+                entityId: "right",
+                payload: { field: "model", from: right.model, to: m },
+              });
+              setRight((s) => ({ ...s, model: m }));
+            }}
             onChangeRole={(r) => setRight((s) => ({ ...s, roleId: r }))}
             onSend={(text) => sendMessage("right", text)}
             onSendToOther={(content, template) => sendToOther("right", content, template)}
@@ -540,6 +625,7 @@ export default function HomePage() {
         onChangeBranch={setBranch}
         githubToken={apiKeys.github}
         knownFilePaths={knownFilePaths}
+        projectId={projectId}
       />
     </main>
   );

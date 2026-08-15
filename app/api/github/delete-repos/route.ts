@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteRepo } from "@/lib/github/client";
 import { getErrorMessage } from "@/lib/errors";
+import { emitEvent } from "@/lib/events/emit";
 
 // Borrado de repos completos — irreversible, sin papelera en GitHub.
 // Exige que el cliente envíe confirmText igual al nombre exacto de los
@@ -39,6 +40,17 @@ export async function POST(req: NextRequest) {
       try {
         await deleteRepo(r.owner, r.name, githubToken);
         results.push({ repo: r.name, ok: true });
+        // Sin CommitCreated acá — borrar un repo no genera ningún commit,
+        // es una llamada directa a la API de GitHub. Sin este evento la
+        // acción más irreversible del hub quedaría invisible para el
+        // canon (hallazgo explícito de la auditoría, CONTEXT_BASE §24).
+        await emitEvent({
+          eventType: "RepoDeleted",
+          actor: "user",
+          source: "GitHub",
+          entityId: `${r.owner}/${r.name}`,
+          payload: { owner: r.owner, repo: r.name },
+        });
       } catch (err: unknown) {
         results.push({
           repo: r.name,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchFileContent } from "@/lib/github/client";
 import { getErrorMessage } from "@/lib/errors";
+import { emitEvent } from "@/lib/events/emit";
 
 // Trae el CONTEXT_BASE.md del repo activo (o README.md como fallback) para
 // adjuntarlo automáticamente como contexto a cualquier IA consultada desde
@@ -8,11 +9,12 @@ import { getErrorMessage } from "@/lib/errors";
 // adjunto automático").
 export async function POST(req: NextRequest) {
   try {
-    const { owner, repo, branch, githubToken } = (await req.json()) as {
+    const { owner, repo, branch, githubToken, projectId } = (await req.json()) as {
       owner: string;
       repo: string;
       branch?: string;
       githubToken?: string;
+      projectId?: string;
     };
     if (!owner || !repo) {
       return NextResponse.json({ error: "Faltan owner y repo." }, { status: 400 });
@@ -30,6 +32,15 @@ export async function POST(req: NextRequest) {
     if (content === null) {
       return NextResponse.json({ content: "", source: null });
     }
+
+    await emitEvent({
+      eventType: "ContextLoaded",
+      actor: "user",
+      source: "GitHub",
+      projectId: projectId ?? null,
+      entityId: `${owner}/${repo}`,
+      payload: { source, length: content.length },
+    });
 
     return NextResponse.json({ content, source });
   } catch (err: unknown) {

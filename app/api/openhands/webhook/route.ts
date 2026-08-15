@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getJobByConversationId, appendAgentJobEvent, updateJobStatus } from "@/lib/db/agentJobs";
 import { getErrorMessage } from "@/lib/errors";
+import { emitEvent } from "@/lib/events/emit";
 
 /**
  * Recibe eventos que el Agent Server de OpenHands empuja a medida que
@@ -46,8 +47,24 @@ export async function POST(req: NextRequest) {
 
     if (status === "finished") {
       await updateJobStatus(job.id, "completed", content ?? undefined);
+      await emitEvent({
+        eventType: "ExecutionCompleted",
+        actor: "system",
+        source: "OpenHands",
+        projectId: job.project_id,
+        entityId: job.id,
+        payload: { conversationId },
+      });
     } else if (status === "error" || status === "stuck") {
       await updateJobStatus(job.id, "failed", content ?? undefined);
+      await emitEvent({
+        eventType: "ExecutionFailed",
+        actor: "system",
+        source: "OpenHands",
+        projectId: job.project_id,
+        entityId: job.id,
+        payload: { conversationId, reason: content ?? status },
+      });
     } else if (job.status === "queued") {
       await updateJobStatus(job.id, "running");
     }

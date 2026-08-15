@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAgentJob, setJobStartTaskId, markJobFailed } from "@/lib/db/agentJobs";
 import { getErrorMessage } from "@/lib/errors";
+import { emitEvent } from "@/lib/events/emit";
 
 /**
  * Dispara una tarea en OpenHands y devuelve de inmediato — nunca espera a
@@ -96,6 +97,15 @@ export async function POST(req: NextRequest) {
     }
 
     await setJobStartTaskId(job.id, startTaskId);
+
+    await emitEvent({
+      eventType: "ExecutionRequested",
+      actor: "user",
+      source: "OpenHands",
+      projectId,
+      entityId: job.id,
+      payload: { owner, repo, branch: branch ?? "main", startTaskId },
+    });
 
     return NextResponse.json({ jobId: job.id, startTaskId });
   } catch (err: unknown) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveJobConversationId, markJobFailed } from "@/lib/db/agentJobs";
 import { getErrorMessage } from "@/lib/errors";
+import { emitEvent } from "@/lib/events/emit";
 
 /**
  * Llamada por scripts/openhands-relay.js cuando un AppConversationStartTask
@@ -27,6 +28,16 @@ export async function POST(req: NextRequest) {
 
     if (startError) {
       await markJobFailed(jobId, startError);
+      // La conversación nunca llegó a existir (el start_task falló antes
+      // de READY) — sigue siendo un ExecutionFailed real, solo que más
+      // temprano en el ciclo de vida que el que detecta el webhook.
+      await emitEvent({
+        eventType: "ExecutionFailed",
+        actor: "system",
+        source: "OpenHands",
+        entityId: jobId,
+        payload: { reason: startError, stage: "start_task" },
+      });
       return NextResponse.json({ ok: true });
     }
 
