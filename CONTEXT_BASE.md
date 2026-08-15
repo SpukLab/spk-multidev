@@ -615,7 +615,81 @@ listada correctamente entre las rutas). Sprint 2 (Task, como proyección
 derivada de este log — nunca como tabla mutable de origen) queda
 autorizado a empezar.
 
-## 26. Pendiente de definir en próxima sesión
+## 26. Sprint 1 — Integrity Gate: clasificación Canonical/Observational y reglas de durabilidad — RATIFICADA
+
+Antes de autorizar Sprint 2, se auditó el Sprint 1 contra el invariante
+central del Event Log: *una operación que cambia estado no puede tener
+éxito de forma invisible sin su evento canónico correspondiente*. La
+implementación original de `emitEvent()` era best-effort puro (loguea y
+sigue) — válido para telemetría observacional, no necesariamente para
+transiciones de estado canónicas.
+
+**Clasificación final de los 24 eventos instrumentados:**
+
+**CANONICAL** (7) — `RepoDeleted`, `FilesDeleted`, `PatchApplied`,
+`CommitCreated`, `PushSucceeded`, `ExecutionRequested`,
+`ExecutionCompleted`. Representan transiciones de estado reales. Dentro de
+este grupo, **solo `RepoDeleted` es Tier A** (después de borrarlo, GitHub
+no retiene absolutamente nada — es el único lugar del sistema entero donde
+ese hecho podría quedar registrado). Los otros 6 son Tier B: el hecho
+subyacente sigue siendo recuperable desde GitHub o `agent_jobs` aunque el
+Event Log lo pierda — perderlos rompe la promesa de reconstrucción unificada,
+pero no borra el hecho del universo.
+
+**OBSERVATIONAL** (17) — el resto. Incluye, con justificación explícita:
+todos los eventos de falla (`PushFailed`, `ExecutionFailed`,
+`ResponseFailed`, `ProviderUnavailable` — el invariante habla de éxitos
+invisibles; una falla nunca es invisible, el usuario ya la vio en pantalla);
+`ConversationCreated`/`ConversationDeleted` (la tabla `sessions` ya es un
+registro durable independiente); `MessageSent`/`ResponseCompleted`
+(redundantes con la tabla `messages`, que ya persiste el contenido real);
+`ContextLoaded`/`ContextBuilt`/`ContextRejected`/`ModelSelected`
+(descriptivos, sin cambio de estado real); `PatchGenerated`/`Validated`/
+`Rejected` (todos pre-commit — si se pierden, no hay ningún cambio real que
+quedó sin rastro).
+
+**Corrección mínima aplicada** (sin colas, sin workers, sin bus de eventos,
+sin transacciones distribuidas — ninguna de esas cuatro cosas hacía falta):
+
+1. `emitEvent()` ahora reintenta hasta 3 veces (backoff 300ms/900ms) antes
+   de darse por vencido, y devuelve `boolean` (antes `void`) — beneficia a
+   los 24 eventos por igual, sin costo para el camino feliz.
+2. **Solo `RepoDeleted`** usa ese valor de retorno: si sigue sin persistir
+   tras los reintentos, la API lo devuelve como `eventLogged: false` y
+   `CleanupPanel` lo muestra como advertencia visible (`⚠️ Se borraron
+   pero NO se pudo registrar...`). Ningún otro evento recibe este
+   tratamiento — se le dio garantía reforzada solo al único que
+   genuinamente la necesita, tal como se pidió explícitamente.
+3. **`ConversationArchived` renombrado a `ConversationDeleted`**: el código
+   hace un `DELETE` físico, no un archivado recuperable — llamarlo
+   "Archived" era una interpretación (viola la regla 1 del canon: los
+   eventos son hechos, no opiniones), no un hallazgo cosmético.
+4. **Hueco de `projectId` cerrado**: `CleanupPanel` no mandaba `projectId`
+   en ningún fetch (`bulk-delete-files`, `delete-repos`); tampoco lo
+   aceptaba `bulk-delete-files/route.ts`. `CodeIntakeDrawer` ya lo tenía
+   bien cableado de punta a punta (verificado, no hizo falta tocarlo).
+   `entity_id` en `null` para eventos donde Task/Knowledge todavía no
+   existen se mantiene tal cual — inventar semántica de entidad ahora
+   sería exactamente lo que la regla 5 del canon prohíbe.
+
+**Riesgo real, no hipotético:** el escenario de falla auditado (operación
+exitosa, falla el insert del evento) ya ocurrió de hecho en esta sesión —
+Supabase se pausó dos veces por inactividad (sección 11). La corrección de
+reintento cubre los baches transitorios de red; no cubre una pausa completa
+de varios minutos, y eso es una limitación conocida y aceptada, no un
+descuido — construir algo que sí la cubriera exigiría exactamente la
+infraestructura (colas, reintentos diferidos) que este sprint tenía
+prohibido agregar.
+
+**Build validado** tras los 8 archivos tocados (`lib/events/emit.ts`,
+`app/api/github/delete-repos/route.ts`, `app/api/github/bulk-delete-files/route.ts`,
+`app/api/sessions/[id]/route.ts`, `components/CleanupPanel.tsx`,
+`components/SettingsDrawer.tsx`, más verificación de `CodeIntakeDrawer.tsx`
+y `app/api/openhands/start/route.ts`, que ya estaban correctos). **Sprint 1
+queda cerrado de verdad.** Sprint 2 (Task, como proyección derivada de este
+log) queda autorizado a empezar.
+
+## 27. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
