@@ -42,6 +42,11 @@ const TYPE_LABEL: Record<KnowledgeType, string> = {
 const STATUS_LABEL = { captured: "Capturado", promoted: "Promovido", rejected: "Rechazado" };
 const STATUS_COLOR = { captured: "#888", promoted: "#4ade80", rejected: "#f87171" };
 
+interface Task {
+  id: string;
+  title: string;
+}
+
 export function KnowledgeDrawer({
   open,
   onClose,
@@ -52,6 +57,7 @@ export function KnowledgeDrawer({
   projectId: string | null;
 }) {
   const [items, setItems] = useState<KnowledgeItem[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -62,7 +68,19 @@ export function KnowledgeDrawer({
   const [newType, setNewType] = useState<KnowledgeType>("observation");
   const [newTitle, setNewTitle] = useState("");
   const [newContent, setNewContent] = useState("");
+  const [newTaskId, setNewTaskId] = useState("");
   const [creating, setCreating] = useState(false);
+
+  async function loadTasks() {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/tasks?projectId=${projectId}`);
+      const data = await res.json();
+      setTasks(data.tasks ?? []);
+    } catch {
+      setTasks([]);
+    }
+  }
 
   async function loadItems() {
     if (!projectId) return;
@@ -84,7 +102,10 @@ export function KnowledgeDrawer({
   }
 
   useEffect(() => {
-    if (open && projectId) loadItems();
+    if (open && projectId) {
+      loadItems();
+      loadTasks();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, projectId, filterType, filterStatus]);
 
@@ -96,7 +117,7 @@ export function KnowledgeDrawer({
       const res = await fetch("/api/knowledge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, type: newType, title: newTitle.trim(), content: newContent.trim() }),
+        body: JSON.stringify({ projectId, type: newType, title: newTitle.trim(), content: newContent.trim(), taskId: newTaskId || undefined }),
       });
       const data = await res.json();
       if (data.error) {
@@ -104,6 +125,7 @@ export function KnowledgeDrawer({
       } else {
         setNewTitle("");
         setNewContent("");
+        setNewTaskId("");
         await loadItems();
       }
     } catch (err) {
@@ -190,6 +212,18 @@ export function KnowledgeDrawer({
                 onChange={(e) => setNewContent(e.target.value)}
                 style={{ width: "100%", minHeight: 70, marginBottom: 6, padding: 8, background: "#1a1a22", border: "1px solid #333", borderRadius: 6, color: "#fff" }}
               />
+              {tasks.length > 0 && (
+                <select
+                  value={newTaskId}
+                  onChange={(e) => setNewTaskId(e.target.value)}
+                  style={{ width: "100%", marginBottom: 6, padding: 8, background: "#1a1a22", border: "1px solid #333", borderRadius: 6, color: "#ccc", fontSize: 12 }}
+                >
+                  <option value="">Sin vincular a ninguna tarea</option>
+                  {tasks.map((t) => (
+                    <option key={t.id} value={t.id}>{t.title}</option>
+                  ))}
+                </select>
+              )}
               <button
                 onClick={handleCreate}
                 disabled={creating || !newTitle.trim() || !newContent.trim()}
