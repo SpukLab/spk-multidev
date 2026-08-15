@@ -536,7 +536,86 @@ verdad del mismo contrato. Puntos destacados de ese documento:
 ninguna pieza ya construida — Code Intake, Supabase, OpenHands, GitHub —
 todo esto se construye encima, no en reemplazo.
 
-## 25. Pendiente de definir en próxima sesión
+## 25. Sprint 1 — Event Log implementado — RATIFICADA
+
+Implementa exclusivamente la capa de persistencia y registro del canon
+ratificado en la sección 24. Sin Task, sin Knowledge Layer, sin Context
+Builder, sin automatización — solo `events` como tabla append-only y su
+emisión instrumentada. Ningún comportamiento existente cambió.
+
+**Infraestructura nueva (mínima, a propósito):**
+- Tabla `events` en Supabase — envelope completo (`event_id`, `timestamp`,
+  `project_id`, `entity_id`, `event_type`, `actor`, `source`, `version`,
+  `payload`), RLS de lectura pública, sin política de escritura client-side
+  (solo vía `service_role`, igual que el resto del hub).
+- `lib/events/emit.ts` — único punto de escritura. `emitEvent()` nunca tira
+  excepción: si el insert falla, se loguea y se sigue. Ninguna acción real
+  del hub puede romperse porque falló registrar el evento que la describe.
+- `POST /api/events/emit` — única ruta nueva de API, exclusiva para los 3
+  eventos que no tienen ningún otro punto de contacto con el servidor
+  (`ContextBuilt`, `ContextRejected`, `ModelSelected` — pasan enteramente
+  client-side). Todo el resto del canon se instrumentó colgado de rutas que
+  ya existían — cero rutas nuevas más allá de esta.
+
+**24 de los 32 eventos del canon quedaron instrumentados** (quedan afuera,
+a propósito, los 8 sin emisor real hoy: `MessageDraftSaved` y los 4 de
+`Task` + 4 de `Knowledge`, que todavía no existen como subsistemas — regla
+5 del canon).
+
+| Evento | Emisor (archivo) | Payload | Punto de persistencia | Comportamiento ante falla |
+|---|---|---|---|---|
+| `ConversationCreated` | `POST /api/sessions` | — | Tras `createSession` | Si falla el insert del evento, la sesión igual se crea y se devuelve normal — se loguea, no interrumpe |
+| `ConversationArchived` | `DELETE /api/sessions/[id]` | — | Tras `deleteSession` | Idem — el borrado ya ocurrió, el evento es solo registro |
+| `MessageSent` | `POST /api/chat` | `provider`, `model` | Al validar la request, antes de llamar al adapter | Si falla, el chat sigue funcionando normal — el evento nunca bloquea la respuesta |
+| `ResponseStarted` | `POST /api/chat` | `provider`, `model` | Justo antes de `adapter.sendMessage` | Idem |
+| `ResponseCompleted` | `POST /api/chat` | `provider`, `model` | Tras respuesta exitosa del adapter | Idem |
+| `ResponseFailed` | `POST /api/chat` | `provider`, `model`, `error` | En el catch general de la ruta | Idem — el error real ya se le devuelve al usuario sin importar esto |
+| `ProviderUnavailable` | `POST /api/chat` | `provider`, `model`, `error` | Cuando el reintento de 503 también falla | Idem |
+| `PatchGenerated` | `POST /api/chat` | `provider`, `model` | Si la respuesta matchea `/^FILE:\s*.+$/m` (mismo regex que el badge visual de `Panel.tsx`) | Idem |
+| `ContextLoaded` | `POST /api/github/context` | `source` (CONTEXT_BASE.md/README), `length` | Tras traer el contenido real con éxito | Si falla el evento, el contexto igual se devuelve al cliente |
+| `ContextBuilt` | client-side, `sendMessage` en `app/page.tsx` → `/api/events/emit` | `provider`, `totalChars`, `hasFileIndex`, `hasProjectContext` | Justo después de armar `systemContent` | Fire-and-forget — un `.catch()` silencioso, nunca bloquea el envío del mensaje |
+| `ContextRejected` | client-side, `sendMessage` → `/api/events/emit` | `provider`, `totalChars`, `threshold` | Cuando el usuario cancela el `window.confirm` de tamaño de contexto | Idem |
+| `ModelSelected` | client-side, los 4 `onChange` de proveedor/modelo → `/api/events/emit` | `field` (`provider`/`model`), `from`, `to` | En el momento del cambio, antes de actualizar el estado del panel | Idem |
+| `PatchValidated` | `POST /api/codeintake/resolve` | `path`, `action` | Por cada instrucción resuelta sin `error` | Si falla el evento, `resolved` igual se devuelve completo al cliente |
+| `PatchRejected` | `POST /api/codeintake/resolve` | `path`, `action`, `reason` | Por cada instrucción con `error` (FIND sin match, o colisión de `ACTION: write`) | Idem |
+| `PatchApplied` | `POST /api/github/commit` | `owner`, `repo`, `filesCount` | Tras `commitFiles` exitoso | Si falla el evento, el commit ya se hizo — no hay forma de "deshacerlo" por esto, y no debería |
+| `CommitCreated` | `POST /api/github/commit` y `bulk-delete-files` | `owner`, `repo`, `message`/`filesDeleted` | Idem | Idem |
+| `PushSucceeded` | `POST /api/github/commit` y `bulk-delete-files` | `owner`, `repo` | Idem | Idem |
+| `PushFailed` | `POST /api/github/commit` y `bulk-delete-files` | `error` | En el catch de cada ruta | Se emite después de que el error real ya se le devuelve al usuario |
+| `FilesDeleted` | `POST /api/github/bulk-delete-files` | `owner`, `repo`, `paths` | Tras `commitFiles` exitoso | Igual que `PatchApplied` — la acción real ya ocurrió |
+| `RepoDeleted` | `POST /api/github/delete-repos` | `owner`, `repo` | Por cada repo efectivamente borrado en el loop | El repo ya está borrado — el evento es registro puro, irreversible como la acción misma |
+| `ExecutionRequested` | `POST /api/openhands/start` | `owner`, `repo`, `branch`, `startTaskId` | Tras resolver el `startTaskId` de OpenHands | Si falla, el job igual quedó creado y disparado |
+| `ExecutionCompleted` | `POST /api/openhands/webhook` | `conversationId` | Cuando `execution_status: finished` | El estado del job ya se actualizó antes — el evento es adicional |
+| `ExecutionFailed` | `POST /api/openhands/webhook` y `POST /api/openhands/resolve` | `conversationId`/`reason`, `stage` | Cuando el status es error/stuck, o cuando el `start_task` nunca llega a `READY` | Idem |
+
+**Actor y source, en la práctica:** `actor` es `"user"` en casi todo (el
+hub es mono-usuario, todo lo dispara una acción directa) salvo
+`ExecutionCompleted`/`ExecutionFailed`, que llevan `actor: "system"` porque
+los detecta el relay en background, no un tap directo. `source` mapea
+proveedor→nombre del canon (`nvidia`→`NIM`, `anthropic`→`Claude`,
+`openai`→`GPT`) vía `providerToSource()` en `lib/events/emit.ts`, y usa
+`"GitHub"`/`"OpenHands"`/`"System"`/`"user"` según corresponda.
+
+**Limitación conocida, documentada a propósito (no un bug):**
+`CodeIntakeDrawer` todavía no manda `projectId` a `/api/codeintake/resolve`
+ni a `/api/github/commit` — los eventos de esas rutas quedan con
+`project_id: null` por ahora. Como el campo es opcional en el envelope, no
+rompe nada; conectar el prop completo hubiera sido más refactor del
+estrictamente necesario para este sprint. Queda para cuando se construya
+Task (Sprint 2), que sí va a necesitar esa asociación de verdad.
+
+**Bug real encontrado y corregido sobre la marcha:** `handleLoadProject`
+estaba a punto de mandarle a `/api/github/context` el `projectId` viejo del
+estado de React (todavía no actualizado en ese punto del closure) en vez
+del recién creado por `/api/projects` — se ató a una variable local
+(`loadedProjectId`) antes de que se manifestara como problema real.
+
+**Build validado** (`npx next build`, compiló limpio, `/api/events/emit`
+listada correctamente entre las rutas). Sprint 2 (Task, como proyección
+derivada de este log — nunca como tabla mutable de origen) queda
+autorizado a empezar.
+
+## 26. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
