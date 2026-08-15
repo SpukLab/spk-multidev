@@ -5,6 +5,7 @@ import { Panel, PanelMessage } from "@/components/Panel";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
+import { TasksDrawer } from "@/components/TasksDrawer";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
@@ -110,6 +111,7 @@ export default function HomePage() {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
+  const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeys, setApiKeys] = useState<StoredApiKeys>({});
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
@@ -475,6 +477,7 @@ export default function HomePage() {
         onToggleContextExpanded={() => setContextExpanded((v) => !v)}
         sessionsCount={sessions.length}
         onOpenChats={() => setChatsDrawerOpen(true)}
+        onOpenTasks={() => setTasksDrawerOpen(true)}
         githubToken={apiKeys.github}
       />
 
@@ -486,6 +489,12 @@ export default function HomePage() {
         onSelectSession={handleSelectSession}
         onNewSession={handleNewSession}
         onDeleteSession={handleDeleteSession}
+      />
+
+      <TasksDrawer
+        open={tasksDrawerOpen}
+        onClose={() => setTasksDrawerOpen(false)}
+        projectId={projectId}
       />
 
       <SettingsDrawer
