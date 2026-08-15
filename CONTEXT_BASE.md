@@ -689,7 +689,116 @@ y `app/api/openhands/start/route.ts`, que ya estaban correctos). **Sprint 1
 queda cerrado de verdad.** Sprint 2 (Task, como proyección derivada de este
 log) queda autorizado a empezar.
 
-## 27. Pendiente de definir en próxima sesión
+## 27. Event Authority Model — refinamiento de terminología (Tier A / Tier B / Observational) — RATIFICADA
+
+**Esto no reclasifica nada de la sección 26 — refina cómo se nombra la
+mitad "Canonical" de esa clasificación, porque agruparla como un bloque
+uniforme escondía una diferencia real: no todos los eventos canónicos
+necesitan el mismo nivel de garantía.** Se preserva la sección 26 tal cual
+quedó escrita — esto es una aclaración nueva, no una reescritura.
+
+**Por qué hacía falta esta aclaración:** la sección 26 decía, implícitamente,
+que el Event Log aspira a ser "la fuente de verdad" sin matizar que, para
+casi todos los eventos canónicos, la fuente de verdad *primaria* en
+realidad sigue siendo un sistema externo (GitHub, `agent_jobs`) — el Event
+Log es quien unifica esa historia en un solo lugar consultable, no quien
+la origina. Solo `RepoDeleted` no tiene ningún sistema externo de respaldo.
+Dejar esto ambiguo hubiera sido un problema real al llegar a Sprint 2: Task
+necesita saber, de antemano, cuáles de sus eventos futuros exigen garantía
+fuerte (porque no van a tener ningún otro respaldo) y cuáles no.
+
+### Invariante actualizado
+
+**Se reemplaza** la formulación anterior ("el Event Log es la única fuente
+de verdad para toda operación") **por esta, más precisa:**
+
+> El Event Log es la fuente canónica del estado interno del Hub y de la
+> línea de tiempo operacional unificada. Para efectos secundarios externos
+> (GitHub, OpenHands, cualquier sistema de ejecución persistente), el Event
+> Log preserva trazabilidad por sobre esas autoridades externas — no las
+> reemplaza como fuente primaria. El estado interno que depende
+> exclusivamente del Event Log (sin ningún respaldo externo) exige garantías
+> de durabilidad más fuertes que los eventos externamente reconstruibles.
+
+### Los tres tiers
+
+**Tier A — Canonical interno/irrecuperable.** Representa estado que no se
+puede reconstruir desde ningún otro sistema autoritativo. Si la persistencia
+falla, el sistema nunca puede fingir en silencio que la historia canónica
+está completa — exige la garantía reforzada (reintento + aviso visible si
+falla igual).
+
+**Tier B — Canonical externamente recuperable.** Pertenece a la línea de
+tiempo unificada del Hub y normalmente debería persistirse, pero si el
+Event Log lo pierde, el hecho subyacente sigue existiendo en un sistema
+externo autoritativo (GitHub, `agent_jobs`) y podría reconciliarse después.
+Canónico para la trazabilidad del Hub — el Event Log no es la fuente física
+única del hecho externo en sí.
+
+**Observational.** Telemetría, procedencia, historial de UX o diagnóstico.
+Su pérdida no invalida el estado reconstruido.
+
+### Tabla final — los 24 eventos instrumentados en Sprint 1
+
+| Evento | Tier | Autoridad primaria | ¿Recuperable externamente? | Comportamiento actual ante falla | ¿Aceptable en Sprint 1? |
+|---|---|---|---|---|---|
+| `RepoDeleted` | **A** | — (ninguno) | No | Reintenta 3 veces; si falla igual, avisa visible al usuario | Sí — ya implementado |
+| `CommitCreated` | B | GitHub | Sí | Reintenta 3 veces; best-effort si falla igual | Sí |
+| `PushSucceeded` | B | GitHub | Sí | Idem | Sí |
+| `PatchApplied` | B | GitHub | Sí | Idem | Sí |
+| `FilesDeleted` | B | GitHub | Sí | Idem | Sí |
+| `ExecutionRequested` | B | `agent_jobs` / OpenHands | Sí | Idem | Sí |
+| `ExecutionCompleted` | B | `agent_jobs` / OpenHands | Sí | Idem | Sí |
+| `ConversationCreated` | Observational | `sessions` (Supabase) | Sí | Best-effort | Sí |
+| `ConversationDeleted` | Observational | `sessions` (Supabase) | Sí | Best-effort | Sí |
+| `MessageSent` | Observational | `messages` (Supabase) | Sí | Best-effort | Sí |
+| `ResponseStarted` | Observational | — (sin equivalente, bajo valor) | No aplica | Best-effort | Sí |
+| `ResponseCompleted` | Observational | `messages` (Supabase) | Sí | Best-effort | Sí |
+| `ResponseFailed` | Observational | Ya visible al usuario en pantalla | No aplica | Best-effort | Sí |
+| `ProviderUnavailable` | Observational | Ya visible al usuario en pantalla | No aplica | Best-effort | Sí |
+| `PatchGenerated` | Observational | Pre-commit, sin estado real todavía | No aplica | Best-effort | Sí |
+| `PatchValidated` | Observational | Pre-commit, sin estado real todavía | No aplica | Best-effort | Sí |
+| `PatchRejected` | Observational | Pre-commit, sin estado real todavía | No aplica | Best-effort | Sí |
+| `PushFailed` | Observational | Ya visible al usuario en pantalla | No aplica | Best-effort | Sí |
+| `ExecutionFailed` | Observational | Ya visible al usuario en pantalla / `agent_jobs.status` | Sí | Best-effort | Sí |
+| `ContextLoaded` | Observational | Sin cambio de estado persistente | No aplica | Best-effort | Sí |
+| `ContextBuilt` | Observational | Sin cambio de estado persistente | No aplica | Best-effort | Sí |
+| `ContextRejected` | Observational | Sin cambio de estado persistente | No aplica | Best-effort | Sí |
+| `ModelSelected` | Observational | Preferencia de UI | No aplica | Best-effort | Sí |
+
+**Ningún cambio de clasificación real** respecto a la sección 26 — es la
+misma división Canonical/Observational, con la mitad "Canonical" partida en
+dos tiers explícitos en vez de tratada como bloque uniforme. Ningún código
+cambió con esta sección.
+
+### Consecuencia explícita para Sprint 2 (contrato, no implementación)
+
+**Task se va a representar como una proyección sobre el Event Log** (sección
+24). Por lo tanto, **los eventos del ciclo de vida de Task van a ser Tier A,
+canónicos internos, por definición** — no tienen ningún sistema externo de
+respaldo, porque Task no existe en ningún otro lado más que en la
+reconstrucción a partir de sus propios eventos. Esto incluye, como mínimo:
+`TaskCreated`, `TaskUpdated` (si el canon lo conserva tal como está
+diseñado), `TaskCompleted`, `TaskAbandoned`.
+
+**Una transición de Task nunca puede ser best-effort.** Si alguno de estos
+eventos no se persiste de forma durable, la transición de Task correspondiente
+**no debe considerarse confirmada** — el patrón de "reintentar + avisar
+visible si falla igual" que hoy tiene `RepoDeleted` en exclusiva va a
+tener que aplicarse a toda la familia de eventos de Task cuando se
+implemente. **Esto no se implementa ahora** — queda establecido como el
+contrato que Sprint 2 tiene que respetar desde el diseño, no como algo a
+resolver después de escribir el código.
+
+### Validación
+
+1. `RepoDeleted` sigue protegido exactamente igual que en la sección 26 — sin cambios de código.
+2. Los 6 eventos Tier B pueden reconciliarse desde GitHub/`agent_jobs` si hiciera falta — ninguno requiere el reintento reforzado.
+3. Los eventos Observational siguen siendo legítimamente best-effort.
+4. Los futuros eventos de Task **no** van a poder ser best-effort — contrato establecido para Sprint 2.
+5. **Sprint 1 no requiere ningún cambio de implementación adicional** después de esta aclaración — es puramente documentación.
+
+## 28. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
