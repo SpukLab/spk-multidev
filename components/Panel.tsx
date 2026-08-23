@@ -16,8 +16,11 @@ export interface PanelMessage {
   content: string;
   originLabel?: string;
   /** id real en Supabase (messages.id) — se completa después de persistir,
-   * usado como source_message_id al capturar Knowledge (Sprint 3). */
-  dbId?: string;
+   * usado como source_message_id al capturar Knowledge (Sprint 3).
+   * undefined = todavía esperando el resultado de persistMessage.
+   * null = ya se resolvió, pero no hay id (sin sesión activa) — capturar
+   * sigue siendo válido, solo que sin ese dato de procedencia puntual. */
+  dbId?: string | null;
 }
 
 interface ModelOption {
@@ -308,15 +311,15 @@ export function Panel({
                     })()}
                     {onCaptureKnowledge && (
                       <button
-                        disabled={!m.dbId}
-                        title={!m.dbId ? "Guardando mensaje..." : undefined}
+                        disabled={m.dbId === undefined}
+                        title={m.dbId === undefined ? "Guardando mensaje..." : undefined}
                         onClick={() => {
                           setKnowledgeCaptureFor(knowledgeCaptureFor === m.id ? null : m.id);
                           setCaptureTitle(m.content.slice(0, 60));
                         }}
-                        style={{ ...smallButtonStyle, opacity: m.dbId ? 1 : 0.5 }}
+                        style={{ ...smallButtonStyle, opacity: m.dbId === undefined ? 0.5 : 1 }}
                       >
-                        {m.dbId ? "💡 Capturar como Knowledge" : "💡 Guardando..."}
+                        {m.dbId === undefined ? "💡 Guardando..." : "💡 Capturar como Knowledge"}
                       </button>
                     )}
                   </div>
@@ -350,7 +353,7 @@ export function Panel({
                       onClick={() => {
                         onCaptureKnowledge({
                           content: m.content,
-                          sourceMessageId: m.dbId,
+                          sourceMessageId: m.dbId ?? undefined,
                           type: captureType,
                           title: captureTitle || m.content.slice(0, 60),
                         });

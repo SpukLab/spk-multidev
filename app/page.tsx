@@ -412,10 +412,16 @@ export default function HomePage() {
 
       if (!data.error) {
         persistMessage(panel, "assistant", assistantContent).then((messageId) => {
-          if (!messageId) return;
+          // Antes: si messageId venía null (sin sesión activa), se cortaba
+          // acá sin tocar el estado — dbId quedaba `undefined` para
+          // siempre, y el botón de Knowledge quedaba deshabilitado
+          // permanentemente mostrando "Guardando..." sin ninguna request
+          // real en curso. Ahora se asienta explícitamente `null` (no
+          // `undefined`) para poder distinguir "todavía esperando" de
+          // "esto nunca va a tener id" — ver Panel.tsx.
           setState((prev) => ({
             ...prev,
-            messages: prev.messages.map((m) => (m.id === assistantMsg.id ? { ...m, dbId: messageId } : m)),
+            messages: prev.messages.map((m) => (m.id === assistantMsg.id ? { ...m, dbId: messageId ?? null } : m)),
           }));
         });
       }
