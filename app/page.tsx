@@ -114,6 +114,15 @@ export default function HomePage() {
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
   const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
   const [knowledgeDrawerOpen, setKnowledgeDrawerOpen] = useState(false);
+  // INSTRUMENTACIÓN TEMPORAL — traza los 11 pasos del ciclo de vida de
+  // "Capturar como Knowledge" con timestamp real, visible en pantalla
+  // (sin devtools, mismo método ya usado para el debug del system prompt).
+  // Sacar una vez encontrado el paso exacto que falla.
+  const [debugLog, setDebugLog] = useState<string[]>([]);
+  function logStep(step: string, extra?: Record<string, unknown>) {
+    const line = `[${new Date().toISOString()}] ${step}${extra ? " " + JSON.stringify(extra) : ""}`;
+    setDebugLog((prev) => [...prev, line]);
+  }
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [apiKeys, setApiKeys] = useState<StoredApiKeys>({});
   const [customRoles, setCustomRoles] = useState<CustomRole[]>([]);
@@ -126,8 +135,13 @@ export default function HomePage() {
   const allRoles = [...defaultRoles, ...customRoles];
 
   async function handleCaptureKnowledge(params: { content: string; sourceMessageId?: string; type: string; title: string }) {
-    if (!projectId) return;
+    logStep("8. handleCaptureKnowledge entered", { projectId, sessionId: currentSessionId, sourceMessageId: params.sourceMessageId });
+    if (!projectId) {
+      logStep("8b. ABORTADO — projectId es null/undefined");
+      return;
+    }
     try {
+      logStep("9. POST /api/knowledge started");
       const res = await fetch("/api/knowledge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -141,12 +155,14 @@ export default function HomePage() {
         }),
       });
       const data = await res.json();
+      logStep("10. POST /api/knowledge resolved", { httpStatus: res.status, hasError: Boolean(data.error), error: data.error });
       if (data.error) {
         // El evento Tier A no se pudo persistir — no se guardó, avisamos
         // en vez de fingir que funcionó.
         alert(`No se pudo capturar el conocimiento: ${data.error}`);
       }
     } catch (err) {
+      logStep("10b. EXCEPCIÓN en el fetch", { error: err instanceof Error ? err.message : String(err) });
       alert(`Error al capturar conocimiento: ${err instanceof Error ? err.message : "desconocido"}`);
     }
   }
@@ -394,6 +410,7 @@ export default function HomePage() {
         }),
       });
       const data = await res.json();
+      logStep("1. AI response received", { hasError: Boolean(data.error), projectId, sessionId: currentSessionId });
 
       const assistantContent = data.error ? `Error: ${data.error}` : data.content;
       const assistantMsg: PanelMessage = {
@@ -415,9 +432,12 @@ export default function HomePage() {
         messages: [...prev.messages, assistantMsg],
         busy: false,
       }));
+      logStep("2. message inserted into React state", { msgId: assistantMsg.id, dbId: assistantMsg.dbId });
 
       if (!data.error) {
+        logStep("3. persistMessage() called", { sessionId: currentSessionId });
         persistMessage(panel, "assistant", assistantContent).then((messageId) => {
+          logStep("4. persistMessage() resolved", { messageId, sessionId: currentSessionId });
           // Antes: si messageId venía null (sin sesión activa), se cortaba
           // acá sin tocar el estado — dbId quedaba `undefined` para
           // siempre, y el botón de Knowledge quedaba deshabilitado
@@ -429,6 +449,7 @@ export default function HomePage() {
             ...prev,
             messages: prev.messages.map((m) => (m.id === assistantMsg.id ? { ...m, dbId: messageId ?? null } : m)),
           }));
+          logStep("5. dbId attached to state", { msgId: assistantMsg.id, dbId: messageId ?? null });
         });
       }
     } catch (err) {
@@ -629,6 +650,7 @@ export default function HomePage() {
             onSendToOther={(content, template) => sendToOther("left", content, template)}
             onOpenInIntake={(content) => setIntakeRawText(content)}
             onCaptureKnowledge={handleCaptureKnowledge}
+            onDebugLog={logStep}
           />
         )}
 
@@ -678,6 +700,7 @@ export default function HomePage() {
             onSendToOther={(content, template) => sendToOther("right", content, template)}
             onOpenInIntake={(content) => setIntakeRawText(content)}
             onCaptureKnowledge={handleCaptureKnowledge}
+            onDebugLog={logStep}
           />
         )}
       </div>
@@ -694,6 +717,36 @@ export default function HomePage() {
         knownFilePaths={knownFilePaths}
         projectId={projectId}
       />
+
+      {debugLog.length > 0 && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            maxHeight: "40vh",
+            zIndex: 998,
+            background: "#0a0a0f",
+            borderTop: "2px solid #a78bfa",
+            padding: 10,
+            overflowY: "auto",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <strong style={{ color: "#a78bfa", fontSize: 12 }}>Debug: ciclo de Capturar Knowledge ({debugLog.length} pasos)</strong>
+            <button
+              onClick={() => setDebugLog([])}
+              style={{ background: "none", border: "1px solid #333", color: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 11 }}
+            >
+              Limpiar
+            </button>
+          </div>
+          <pre style={{ fontSize: 10, color: "#4ade80", whiteSpace: "pre-wrap", margin: 0, fontFamily: "monospace" }}>
+            {debugLog.join("\n")}
+          </pre>
+        </div>
+      )}
     </main>
   );
 }

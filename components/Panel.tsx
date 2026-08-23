@@ -49,6 +49,7 @@ interface PanelProps {
   onSendToOther: (content: string, template: string) => void;
   onOpenInIntake: (content: string) => void;
   onCaptureKnowledge?: (params: { content: string; sourceMessageId?: string; type: string; title: string }) => void;
+  onDebugLog?: (step: string, extra?: Record<string, unknown>) => void;
 }
 
 export function Panel({
@@ -71,6 +72,7 @@ export function Panel({
   onSendToOther,
   onOpenInIntake,
   onCaptureKnowledge,
+  onDebugLog,
 }: PanelProps) {
   const [input, setInput] = useState("");
   const [template, setTemplate] = useState("");
@@ -314,6 +316,7 @@ export function Panel({
                         disabled={m.dbId === undefined}
                         title={m.dbId === undefined ? "Guardando mensaje..." : undefined}
                         onClick={() => {
+                          onDebugLog?.("6+7. Capture button was enabled and clicked", { msgId: m.id, dbId: m.dbId });
                           setKnowledgeCaptureFor(knowledgeCaptureFor === m.id ? null : m.id);
                           setCaptureTitle(m.content.slice(0, 60));
                         }}
@@ -358,6 +361,7 @@ export function Panel({
                           title: captureTitle || m.content.slice(0, 60),
                         });
                         setKnowledgeCaptureFor(null);
+                        onDebugLog?.("11. UI loading cleared (picker cerrado)", { msgId: m.id });
                       }}
                       style={{ padding: 6, background: "#7c3aed", border: "none", borderRadius: 6, color: "#fff", fontSize: 12 }}
                     >
