@@ -67,6 +67,27 @@ export async function captureKnowledge(params: {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
+  // Auditoría de integridad (Sprint 3, pre-validación): sin este chequeo,
+  // un taskId de otro proyecto se guardaría en silencio, generando
+  // procedencia engañosa (Task de un proyecto, Knowledge de otro). La UI
+  // hoy no permite armar esa combinación, pero la API en sí no lo impedía.
+  if (params.taskId) {
+    const { data: task, error: taskError } = await supabase
+      .from("tasks")
+      .select("project_id")
+      .eq("id", params.taskId)
+      .maybeSingle();
+    if (taskError) throw taskError;
+    if (!task) {
+      throw new KnowledgeTransitionError(`La Task ${params.taskId} no existe — no se vincula.`);
+    }
+    if (task.project_id !== params.projectId) {
+      throw new KnowledgeTransitionError(
+        "La Task referenciada pertenece a otro proyecto — no se puede vincular Knowledge de un proyecto a una Task de otro."
+      );
+    }
+  }
+
   const logged = await emitEvent({
     eventType: "KnowledgeCaptured",
     actor: "user",

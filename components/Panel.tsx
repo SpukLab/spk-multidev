@@ -308,13 +308,15 @@ export function Panel({
                     })()}
                     {onCaptureKnowledge && (
                       <button
+                        disabled={!m.dbId}
+                        title={!m.dbId ? "Guardando mensaje..." : undefined}
                         onClick={() => {
                           setKnowledgeCaptureFor(knowledgeCaptureFor === m.id ? null : m.id);
                           setCaptureTitle(m.content.slice(0, 60));
                         }}
-                        style={smallButtonStyle}
+                        style={{ ...smallButtonStyle, opacity: m.dbId ? 1 : 0.5 }}
                       >
-                        💡 Capturar como Knowledge
+                        {m.dbId ? "💡 Capturar como Knowledge" : "💡 Guardando..."}
                       </button>
                     )}
                   </div>
