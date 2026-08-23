@@ -402,6 +402,12 @@ export default function HomePage() {
         content: assistantContent,
         originLabel:
           roleDef && roleDef.id !== "none" ? `${roleDef.label} (${state.provider})` : undefined,
+        // Un mensaje de error nunca se persiste (rama de abajo, `if (!data.error)`)
+        // — así que jamás va a tener dbId real. Se asienta `null` ACÁ, en el
+        // momento de creación, para que el botón de Knowledge nunca quede
+        // esperando algo que estructuralmente no puede llegar (mismo bug
+        // que el de sesión inexistente, disparado por un camino distinto).
+        dbId: data.error ? null : undefined,
       };
 
       setState((prev) => ({
