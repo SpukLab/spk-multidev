@@ -1,26 +1,21 @@
-import { buildPromptSections } from "./promptSections";
-
 /**
  * Sprint 4, commit 4/6 — ADR-011 (CONTEXT_BASE.md sección 30).
  *
- * buildContext() sigue siendo una función PURA: no hace fetches, no sabe
- * de orden final de prompt (eso es `assemblePrompt`, en promptAssembler.ts,
- * que ahora es 100% agnóstico de dominio). El formateo específico de cada
- * bloque (qué dice el índice de archivos, cómo se presenta una Task, etc.)
- * vive en `promptSections.ts` — ni acá ni en el assembler.
+ * buildContext() es una función PURA que devuelve solo DATOS — modelo de
+ * dominio, nada de representación de prompt. `sections` NO vive acá: es
+ * una proyección derivada, generada bajo demanda por
+ * `buildPromptSections(bundle)` en promptSections.ts — mismo patrón ya
+ * aplicado tres veces en este proyecto (Event Log → Task, Event Log →
+ * Knowledge, Event Log → Active Task). El ContextBundle es el "Event Log"
+ * de esta analogía; `PromptSection[]` es una de sus proyecciones posibles,
+ * no la única — mañana puede haber también un InspectorSection[] u otra
+ * vista, sin que el bundle sepa nada de ninguna de las dos.
  *
  * `CONTEXT_SCHEMA_VERSION` es la ÚNICA fuente de la versión de contexto —
- * ContextBuilder, PromptAssembler y el evento ContextBuilt la referencian
- * a esta misma constante, nunca escriben "1" a mano en tres lugares
- * distintos.
+ * ContextBuilder y el evento ContextBuilt la referencian a esta misma
+ * constante, nunca escriben "1" a mano en varios lugares.
  */
 export const CONTEXT_SCHEMA_VERSION = 1;
-
-export interface PromptSection {
-  readonly id: string;
-  readonly priority: number;
-  readonly content: string;
-}
 
 export interface ContextBundle {
   readonly meta: Readonly<{
@@ -76,13 +71,10 @@ export interface ContextBundle {
 
   readonly codeIntakeInstruction: string;
 
-  /**
-   * Bloques de texto ya formateados, con prioridad de orden — la pieza
-   * que hace que PromptAssembler no necesite conocer conceptos de dominio
-   * (Code Intake, Task, Knowledge, etc). Cada sección se genera en
-   * promptSections.ts, no acá ni en el assembler.
-   */
-  readonly sections: ReadonlyArray<PromptSection>;
+  // Dato de dominio (una preferencia del usuario para este intercambio),
+  // no una sección de prompt ya formateada — el formateo lo hace
+  // promptSections.ts a partir de este campo.
+  readonly sequentialThinkingInstruction: string | null;
 }
 
 export interface BuildContextParams {
@@ -100,25 +92,6 @@ export interface BuildContextParams {
 }
 
 export function buildContext(params: BuildContextParams): ContextBundle {
-  const role = params.roleDef ? { id: params.roleDef.id, systemPrompt: params.roleDef.systemPrompt } : null;
-  const activeTask = null; // Sin implementar todavía — commit posterior.
-  const knowledge: ContextBundle["knowledge"] = []; // Sin implementar todavía — commit posterior.
-  const projectCanon =
-    params.contextText && params.contextSource
-      ? { source: params.contextSource, content: params.contextText }
-      : null;
-  const repositoryIndex = params.knownFilePaths.length > 0 ? { paths: params.knownFilePaths } : null;
-
-  const sections = buildPromptSections({
-    role,
-    activeTask,
-    knowledge,
-    sequentialThinkingInstruction: params.sequentialThinkingInstruction,
-    projectCanon,
-    repositoryIndex,
-    codeIntakeInstruction: params.codeIntakeInstruction,
-  });
-
   const bundle: ContextBundle = {
     meta: {
       projectId: params.projectId,
@@ -128,21 +101,25 @@ export function buildContext(params: BuildContextParams): ContextBundle {
       contextVersion: CONTEXT_SCHEMA_VERSION,
       generatedAt: new Date().toISOString(),
     },
-    role,
-    activeTask,
-    knowledge,
-    projectCanon,
+    role: params.roleDef ? { id: params.roleDef.id, systemPrompt: params.roleDef.systemPrompt } : null,
+    // Sin implementar todavía — commit posterior.
+    activeTask: null,
+    // Sin implementar todavía — commit posterior.
+    knowledge: [],
+    projectCanon:
+      params.contextText && params.contextSource
+        ? { source: params.contextSource, content: params.contextText }
+        : null,
     conversation: params.messages,
-    repositoryIndex,
+    repositoryIndex: params.knownFilePaths.length > 0 ? { paths: params.knownFilePaths } : null,
     codeIntakeInstruction: params.codeIntakeInstruction,
-    sections,
+    sequentialThinkingInstruction: params.sequentialThinkingInstruction,
   };
 
   // El bundle es una "fotografía" del contexto — nadie debería poder
   // mutarlo de paso dentro de sendMessage(). Object.freeze es shallow en
-  // JS; se congela también `meta` y `sections` (los más propensos a que
-  // alguien los toque por error).
+  // JS; se congela también `meta` (la más propensa a que alguien la
+  // toque por error).
   Object.freeze(bundle.meta);
-  Object.freeze(bundle.sections);
   return Object.freeze(bundle);
 }

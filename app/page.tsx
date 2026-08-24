@@ -13,6 +13,7 @@ import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION 
 import { getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
 import { buildContext } from "@/lib/contextBuilder";
+import { buildPromptSections } from "@/lib/promptSections";
 import { assemblePrompt } from "@/lib/promptAssembler";
 
 interface PanelState {
@@ -349,7 +350,14 @@ export default function HomePage() {
       sequentialThinkingInstruction: state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
     });
 
-    const { systemContent, messages: assembledMessages } = assemblePrompt(bundle, {
+    // buildContext() entrega solo datos (ContextBundle). buildPromptSections
+    // es la proyección — la única pieza que sabe de dominio (Task, Knowledge,
+    // Code Intake). assemblePrompt es un serializador puro, ni siquiera
+    // conoce el ContextBundle.
+    const sections = buildPromptSections(bundle);
+    const { systemContent, messages: assembledMessages } = assemblePrompt({
+      sections,
+      conversation: bundle.conversation,
       userMessage: text,
     });
 
