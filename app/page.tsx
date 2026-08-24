@@ -12,8 +12,8 @@ import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
-import { buildContext } from "@/lib/contextBuilder";
-import { buildPromptSections } from "@/lib/promptSections";
+import { buildContext, BuildContextParams } from "@/lib/contextBuilder";
+import { buildPromptSections, classifyKnowledgeForPrompt } from "@/lib/promptSections";
 import { assemblePrompt } from "@/lib/promptAssembler";
 
 interface PanelState {
@@ -331,11 +331,28 @@ export default function HomePage() {
 
     const roleDef = allRoles.find((r) => r.id === state.roleId);
 
-    // Sprint 4, commit 3/6 (ADR-011): sendMessage ya no arma texto de
-    // prompt en absoluto — buildContext() entrega datos, assemblePrompt()
-    // es la única pieza que sabe de orden/formato. Esto es lo que permite
-    // que un consumidor futuro (OpenHands, un Auditor, el Loop) use el
-    // mismo bundle sin reimplementar el armado de texto acá.
+    // Sprint 4, commit 4/6 (ADR-011): buildContext sigue sin hacer
+    // fetches — Task activa y Knowledge se cargan acá (misma responsabilidad
+    // que ya tenía este archivo para contextText/knownFilePaths) y se le
+    // pasan ya resueltos.
+    let activeTaskData: BuildContextParams["activeTask"] = null;
+    let knowledgeItemsData: BuildContextParams["knowledgeItems"] = [];
+    if (projectId) {
+      try {
+        const [activeTaskRes, knowledgeRes] = await Promise.all([
+          fetch(`/api/active-task?projectId=${projectId}`),
+          fetch(`/api/knowledge?projectId=${projectId}`),
+        ]);
+        const activeTaskJson = await activeTaskRes.json();
+        const knowledgeJson = await knowledgeRes.json();
+        activeTaskData = activeTaskJson.activeTask ?? null;
+        knowledgeItemsData = knowledgeJson.items ?? [];
+      } catch {
+        // Si falla, seguimos sin Task activa/Knowledge en este mensaje —
+        // no bloquea el chat, el resto del contexto sigue funcionando.
+      }
+    }
+
     const bundle = buildContext({
       projectId,
       sessionId: currentSessionId,
@@ -348,6 +365,8 @@ export default function HomePage() {
       knownFilePaths,
       codeIntakeInstruction: CODE_INTAKE_INSTRUCTION,
       sequentialThinkingInstruction: state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
+      activeTask: activeTaskData,
+      knowledgeItems: knowledgeItemsData,
     });
 
     // buildContext() entrega solo datos (ContextBundle). buildPromptSections
@@ -355,6 +374,10 @@ export default function HomePage() {
     // Code Intake). assemblePrompt es un serializador puro, ni siquiera
     // conoce el ContextBundle.
     const sections = buildPromptSections(bundle);
+    // Misma clasificación que ya usa buildPromptSections internamente —
+    // se reusa acá (no se duplica la lógica) para saber exactamente qué
+    // quedó incluido/omitido y poder reportarlo en ContextBuilt.
+    const classifiedKnowledge = classifyKnowledgeForPrompt(bundle);
     const { systemContent, messages: assembledMessages } = assemblePrompt({
       sections,
       conversation: bundle.conversation,
@@ -372,14 +395,21 @@ export default function HomePage() {
       projectId,
       entityId: currentSessionId,
       payload: {
-        provider: state.provider,
-        totalChars,
-        hasFileIndex: knownFilePaths.length > 0,
-        hasProjectContext: Boolean(contextText),
-        // Commit 4/6: una sola fuente de verdad para la versión —
-        // bundle.meta.contextVersion viene de CONTEXT_SCHEMA_VERSION en
-        // contextBuilder.ts, nunca un "1" escrito a mano acá.
+        // Commit 4/6: el evento registra DECISIONES, no texto — nunca el
+        // prompt serializado. Con esto alcanza para responder después
+        // "por qué se armó este contexto así" sin guardar nada pesado
+        // ni potencialmente sensible en el Event Log.
         contextVersion: bundle.meta.contextVersion,
+        provider: state.provider,
+        activeTaskId: bundle.activeTask?.id ?? null,
+        includedKnowledgeIds: classifiedKnowledge.map((k) => k.id),
+        omittedKnowledgeIds: bundle.knowledge
+          .filter((k) => !classifiedKnowledge.some((c) => c.id === k.id))
+          .map((k) => k.id),
+        conversationPairs: Math.floor(bundle.conversation.length / 2),
+        repositoryPaths: bundle.repositoryIndex?.paths.length ?? 0,
+        projectCanonIncluded: Boolean(bundle.projectCanon),
+        totalCharacters: totalChars,
       },
     });
 

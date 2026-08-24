@@ -31,9 +31,60 @@ function activeTaskSection(bundle: ContextBundle): PromptSection | null {
   return { id: "active-task", priority: 20, content: lines.join("\n") };
 }
 
+export type KnowledgeTier = "promoted-task" | "promoted-project" | "captured-task" | "captured-project";
+
+/**
+ * La escalera de 4 niveles acordada (CONTEXT_BASE.md sección 30/ADR-011):
+ * promoted+Task activa > promoted del proyecto > captured+Task activa >
+ * captured del proyecto. Un item vinculado a una Task que NO es la activa
+ * queda excluido por completo (mismo motivo por el que Active Task es
+ * única: evitar mezclar contextos de trabajo).
+ *
+ * Esta es la ÚNICA función que decide "qué conviene mostrar" — vive acá,
+ * no en contextBuilder.ts, tal como está ratificado. Se exporta porque
+ * el payload de telemetría de ContextBuilt (armado en page.tsx) necesita
+ * exactamente esta misma clasificación para reportar qué se incluyó y
+ * qué se omitió, sin duplicar la lógica en dos lugares.
+ */
+export function classifyKnowledgeForPrompt(
+  bundle: ContextBundle
+): Array<{ id: string; title: string; type: string; content: string; tier: KnowledgeTier }> {
+  const activeTaskId = bundle.activeTask?.id ?? null;
+  const result: Array<{ id: string; title: string; type: string; content: string; tier: KnowledgeTier }> = [];
+
+  for (const k of bundle.knowledge) {
+    const isTaskLinked = activeTaskId !== null && k.taskId === activeTaskId;
+    const isProjectLevel = k.taskId === null;
+    if (!isTaskLinked && !isProjectLevel) continue; // vinculado a otra Task, no la activa — excluido
+
+    const tier: KnowledgeTier =
+      k.status === "promoted"
+        ? isTaskLinked
+          ? "promoted-task"
+          : "promoted-project"
+        : isTaskLinked
+          ? "captured-task"
+          : "captured-project";
+
+    result.push({ id: k.id, title: k.title, type: k.type, content: k.content, tier });
+  }
+
+  // Orden de prioridad real dentro del bloque de Knowledge — no solo
+  // agrupado, efectivamente ordenado de más a menos autoritativo.
+  const tierOrder: Record<KnowledgeTier, number> = {
+    "promoted-task": 0,
+    "promoted-project": 1,
+    "captured-task": 2,
+    "captured-project": 3,
+  };
+  result.sort((a, b) => tierOrder[a.tier] - tierOrder[b.tier]);
+  return result;
+}
+
 function knowledgeSection(bundle: ContextBundle): PromptSection | null {
-  if (bundle.knowledge.length === 0) return null;
-  const lines = bundle.knowledge.map((k) => {
+  const classified = classifyKnowledgeForPrompt(bundle);
+  if (classified.length === 0) return null;
+  const lines = classified.map((k) => {
     const provisional = k.tier.startsWith("captured") ? " (provisorio, no promovido)" : "";
     return `- [${k.type}] ${k.title}${provisional}\n  ${k.content}`;
   });

@@ -49,7 +49,12 @@ export interface ContextBundle {
       type: string;
       title: string;
       content: string;
-      tier: "promoted-task" | "promoted-project" | "captured-task" | "captured-project";
+      // Hechos crudos, no una decisión de prioridad — clasificar esto en
+      // tiers (promoted-task, captured-project, etc.) es responsabilidad
+      // de buildPromptSections(), nunca de buildContext(). El Builder
+      // responde "qué existe", no "qué conviene mostrar".
+      status: "captured" | "promoted";
+      taskId: string | null;
     }>
   >;
 
@@ -89,6 +94,27 @@ export interface BuildContextParams {
   knownFilePaths: string[];
   codeIntakeInstruction: string;
   sequentialThinkingInstruction: string | null;
+  // Ya cargados por quien llama (mismo criterio que el resto de los
+  // params) — buildContext sigue sin hacer fetches. Se excluye acá
+  // "rejected": es una regla de dominio dura (sección 29 del
+  // CONTEXT_BASE — "rejected nunca se presenta como conocimiento
+  // válido"), no una preferencia de prioridad, así que corresponde al
+  // Builder, no a la proyección.
+  activeTask: {
+    id: string;
+    title: string;
+    objective: string | null;
+    acceptance_criteria: string | null;
+    status: string;
+  } | null;
+  knowledgeItems: Array<{
+    id: string;
+    type: string;
+    title: string;
+    content: string;
+    status: "captured" | "promoted" | "rejected";
+    task_id: string | null;
+  }>;
 }
 
 export function buildContext(params: BuildContextParams): ContextBundle {
@@ -102,10 +128,29 @@ export function buildContext(params: BuildContextParams): ContextBundle {
       generatedAt: new Date().toISOString(),
     },
     role: params.roleDef ? { id: params.roleDef.id, systemPrompt: params.roleDef.systemPrompt } : null,
-    // Sin implementar todavía — commit posterior.
-    activeTask: null,
-    // Sin implementar todavía — commit posterior.
-    knowledge: [],
+    activeTask: params.activeTask
+      ? {
+          id: params.activeTask.id,
+          title: params.activeTask.title,
+          objective: params.activeTask.objective,
+          acceptanceCriteria: params.activeTask.acceptance_criteria,
+          status: params.activeTask.status,
+        }
+      : null,
+    // "rejected" se excluye acá — regla de dominio dura, no una prioridad.
+    // El resto (captured/promoted, con o sin Task) queda todo incluido;
+    // clasificar en tiers y decidir qué mostrar es trabajo de
+    // buildPromptSections(), no de acá.
+    knowledge: params.knowledgeItems
+      .filter((k) => k.status !== "rejected")
+      .map((k) => ({
+        id: k.id,
+        type: k.type,
+        title: k.title,
+        content: k.content,
+        status: k.status as "captured" | "promoted",
+        taskId: k.task_id,
+      })),
     projectCanon:
       params.contextText && params.contextSource
         ? { source: params.contextSource, content: params.contextText }
