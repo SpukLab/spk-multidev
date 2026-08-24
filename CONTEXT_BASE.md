@@ -942,7 +942,83 @@ Graph-RAG — búsqueda por `.eq()` simple de Postgres, igual que Task.
 el modelo nunca decide por sí solo que algo es verdad canónica; capturar,
 promover y rechazar son siempre acciones explícitas del usuario.
 
-## 30. Pendiente de definir en próxima sesión
+## 30. ADR-011 — Context Assembly Pipeline — RATIFICADA
+
+**Nota de forma:** este hub nunca separó ADRs en archivos aparte — todo
+vive en `CONTEXT_BASE.md` (sección 3 de la Auditoría Arquitectónica lo
+documenta explícitamente). Esta sección es el ADR-011, numerado y
+titulado para que sea localizable como tal, sin romper ese patrón ya
+establecido.
+
+**Contexto:** hasta Sprint 3 se construyeron tres piezas independientes
+(Event Log, Task, Knowledge). Sprint 4 es la primera pieza que **consume**
+las tres a la vez — el momento en que el hub deja de ser un conjunto de
+herramientas sueltas y empieza a comportarse como un sistema integrado.
+
+**Decisiones:**
+
+1. **El Builder devuelve datos, no prompts.** `buildContext()` es una
+   función pura que arma un `ContextBundle` tipado — cero strings de
+   prompt, cero concatenación de texto. Solo estructura de datos.
+2. **El Assembler transforma datos en prompt.** `PromptAssembler` es una
+   pieza separada, la única que sabe de orden, formato y texto final. El
+   Builder nunca sabe cómo se va a ver el prompt.
+3. **Relevancia determinista, sin embeddings.** Reglas explícitas y
+   auditables (Task activa, estado de Knowledge, recencia de conversación)
+   — nunca ranking opaco, nunca vector search, nunca Graph-RAG.
+4. **Unidades atómicas — nunca se corta una a la mitad.** Un Knowledge
+   entra completo o no entra. Una Task entra completa o no entra. Un
+   intercambio de conversación entra completo o no entra. El canon del
+   proyecto (`CONTEXT_BASE.md`/README) también es atómico — entra
+   completo, o queda afuera, nunca truncado con una marca (corrección
+   sobre una propuesta anterior de esta misma sesión, que sí permitía
+   truncar el canon — quedó descartada).
+5. **El Builder es reutilizable por cualquier agente.** No es "la función
+   que arma el prompt del chat" — es la pieza que cualquier consumidor
+   futuro (OpenHands, generación automática de ADR, auditorías, el Loop
+   iterativo cuando exista) puede usar sin reimplementar nada.
+6. **Observabilidad vía `ContextBuilt`.** Sin eventos nuevos — se
+   extiende el payload del evento ya ratificado (sección 24) con
+   procedencia (`taskId`, `knowledgeIdsIncluded`, turnos incluidos) y
+   `contextVersion` (arranca en `1`, para poder comparar ejecuciones de
+   distintas versiones del algoritmo del Builder sin adivinar cuál corrió).
+7. **La Task activa es una decisión operativa, no un dato estructural —
+   se modela como evento Tier A, no como columna en `projects`.** Corrección
+   hecha en esta misma sesión antes del primer commit: se había propuesto
+   `projects.active_task_id`, lo cual rompía el principio ya vigente desde
+   Sprint 1 (todo estado operativo debe poder reconstruirse desde el Event
+   Log). Se adopta en su lugar:
+   - Evento `ActiveTaskChanged` — payload `{ projectId, previousTaskId, newTaskId }`.
+   - Proyección mínima, tabla nueva `active_project_context`
+     (`project_id`, `active_task_id`, `updated_at`) — **no se toca
+     `projects`**, separando configuración permanente (owner/repo/branch)
+     de estado operativo (qué se está trabajando ahora).
+
+**Estructura del `ContextBundle`** (forma, no implementación):
+```
+meta: { projectId, sessionId, panelId, provider, contextVersion, generatedAt }
+role: { id, systemPrompt } | null
+activeTask: { id, title, objective, acceptanceCriteria, status } | null
+knowledge: [{ id, type, title, content, tier }]   // tier: promoted-task > promoted-project > captured-task > captured-project
+projectCanon: { source, content } | null
+conversation: [{ role, content }]                  // últimos N pares usuario/asistente, no mensajes sueltos
+repositoryIndex: { paths } | null                   // índice completo en Sprint 4, sin reducir
+codeIntakeInstruction: string
+```
+
+**Orden final del prompt** (auditado y corregido — no el orden de ejemplo
+original, que separaba el índice de `CODE_INTAKE_INSTRUCTION`, repitiendo
+el mismo error ya encontrado y corregido en la auditoría LLM-perspective
+de esta sesión): Rol → Task activa → Knowledge → Canon del proyecto →
+Conversación reciente → Índice de archivos → `CODE_INTAKE_INSTRUCTION`
+(pegado al índice, sin nada en el medio) → Mensaje del usuario.
+
+**Consecuencia directa:** el Loop iterativo (cuando se construya, más
+adelante) no va a necesitar reconstruir contexto en cada vuelta — va a
+reusar `buildContext()` tal cual, con la Task activa como ancla natural
+de cada iteración.
+
+## 31. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
