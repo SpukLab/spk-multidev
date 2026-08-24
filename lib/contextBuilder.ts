@@ -14,55 +14,64 @@
  */
 
 export interface ContextBundle {
-  meta: {
-    projectId: string;
+  readonly meta: Readonly<{
+    // Corrección Commit 3: antes se usaba "" como sentinel cuando no hay
+    // proyecto persistido — era deshonesto con el tipo real. Se corrige a
+    // `string | null`. La pregunta de dominio más grande ("¿puede existir
+    // un ContextBundle válido sin proyecto?") queda deliberadamente
+    // abierta — no se resuelve acá, solo se deja de mentir sobre el tipo.
+    projectId: string | null;
     sessionId: string | null;
     panelId: "left" | "right";
     provider: string;
     contextVersion: 1;
     generatedAt: string;
-  };
+  }>;
 
-  role: {
+  readonly role: Readonly<{
     id: string;
     systemPrompt: string;
-  } | null;
+  }> | null;
 
-  activeTask: {
+  readonly activeTask: Readonly<{
     id: string;
     title: string;
     objective: string | null;
     acceptanceCriteria: string | null;
     status: string;
-  } | null;
+  }> | null;
 
-  knowledge: Array<{
-    id: string;
-    type: string;
-    title: string;
-    content: string;
-    tier: "promoted-task" | "promoted-project" | "captured-task" | "captured-project";
-  }>;
+  readonly knowledge: ReadonlyArray<
+    Readonly<{
+      id: string;
+      type: string;
+      title: string;
+      content: string;
+      tier: "promoted-task" | "promoted-project" | "captured-task" | "captured-project";
+    }>
+  >;
 
-  projectCanon: {
+  readonly projectCanon: Readonly<{
     source: string;
     content: string;
-  } | null;
+  }> | null;
 
-  conversation: Array<{
-    role: "user" | "assistant";
-    content: string;
-  }>;
+  readonly conversation: ReadonlyArray<
+    Readonly<{
+      role: "user" | "assistant";
+      content: string;
+    }>
+  >;
 
-  repositoryIndex: {
-    paths: string[];
-  } | null;
+  readonly repositoryIndex: Readonly<{
+    paths: ReadonlyArray<string>;
+  }> | null;
 
-  codeIntakeInstruction: string;
+  readonly codeIntakeInstruction: string;
 }
 
 export interface BuildContextParams {
-  projectId: string;
+  projectId: string | null;
   sessionId: string | null;
   panelId: "left" | "right";
   provider: string;
@@ -75,7 +84,7 @@ export interface BuildContextParams {
 }
 
 export function buildContext(params: BuildContextParams): ContextBundle {
-  return {
+  const bundle: ContextBundle = {
     meta: {
       projectId: params.projectId,
       sessionId: params.sessionId,
@@ -97,4 +106,11 @@ export function buildContext(params: BuildContextParams): ContextBundle {
     repositoryIndex: params.knownFilePaths.length > 0 ? { paths: params.knownFilePaths } : null,
     codeIntakeInstruction: params.codeIntakeInstruction,
   };
+
+  // Commit 3: el bundle es una "fotografía" del contexto — nadie debería
+  // poder mutarlo de paso dentro de sendMessage(). Object.freeze es
+  // shallow en JS; se congela también `meta` (el objeto anidado con más
+  // chance de que alguien lo toque por error).
+  Object.freeze(bundle.meta);
+  return Object.freeze(bundle);
 }
