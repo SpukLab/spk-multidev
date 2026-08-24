@@ -346,10 +346,10 @@ export default function HomePage() {
       contextSource,
       knownFilePaths,
       codeIntakeInstruction: CODE_INTAKE_INSTRUCTION,
+      sequentialThinkingInstruction: state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
     });
 
     const { systemContent, messages: assembledMessages } = assemblePrompt(bundle, {
-      sequentialThinkingInstruction: state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
       userMessage: text,
     });
 
@@ -368,6 +368,10 @@ export default function HomePage() {
         totalChars,
         hasFileIndex: knownFilePaths.length > 0,
         hasProjectContext: Boolean(contextText),
+        // Commit 4/6: una sola fuente de verdad para la versión —
+        // bundle.meta.contextVersion viene de CONTEXT_SCHEMA_VERSION en
+        // contextBuilder.ts, nunca un "1" escrito a mano acá.
+        contextVersion: bundle.meta.contextVersion,
       },
     });
 

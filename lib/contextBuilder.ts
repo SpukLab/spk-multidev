@@ -1,30 +1,37 @@
+import { buildPromptSections } from "./promptSections";
+
 /**
- * Sprint 4, commit 2/6 — ADR-011 (CONTEXT_BASE.md sección 30).
+ * Sprint 4, commit 4/6 — ADR-011 (CONTEXT_BASE.md sección 30).
  *
- * buildContext() es una función PURA: no hace fetches, no concatena
- * texto de prompt, no sabe nada de cómo se va a ver el system message
- * final — eso es responsabilidad del PromptAssembler (commit 3, todavía
- * no existe). Acá solo se estructuran datos ya cargados por quien llama.
+ * buildContext() sigue siendo una función PURA: no hace fetches, no sabe
+ * de orden final de prompt (eso es `assemblePrompt`, en promptAssembler.ts,
+ * que ahora es 100% agnóstico de dominio). El formateo específico de cada
+ * bloque (qué dice el índice de archivos, cómo se presenta una Task, etc.)
+ * vive en `promptSections.ts` — ni acá ni en el assembler.
  *
- * En este commit `activeTask` y `knowledge` quedan deliberadamente vacíos
- * — el lugar está preparado, la lógica de selección real llega en
- * commits posteriores. `conversation`, `repositoryIndex`, `projectCanon`
- * y `role` copian exactamente lo que ya se usaba, sin ningún cambio de
- * comportamiento observable.
+ * `CONTEXT_SCHEMA_VERSION` es la ÚNICA fuente de la versión de contexto —
+ * ContextBuilder, PromptAssembler y el evento ContextBuilt la referencian
+ * a esta misma constante, nunca escriben "1" a mano en tres lugares
+ * distintos.
  */
+export const CONTEXT_SCHEMA_VERSION = 1;
+
+export interface PromptSection {
+  readonly id: string;
+  readonly priority: number;
+  readonly content: string;
+}
 
 export interface ContextBundle {
   readonly meta: Readonly<{
-    // Corrección Commit 3: antes se usaba "" como sentinel cuando no hay
-    // proyecto persistido — era deshonesto con el tipo real. Se corrige a
-    // `string | null`. La pregunta de dominio más grande ("¿puede existir
-    // un ContextBundle válido sin proyecto?") queda deliberadamente
-    // abierta — no se resuelve acá, solo se deja de mentir sobre el tipo.
+    // projectId: string | null real (no "" sentinel) — la pregunta de
+    // dominio ("¿puede existir un ContextBundle sin proyecto?") sigue
+    // deliberadamente abierta, sin resolver acá.
     projectId: string | null;
     sessionId: string | null;
     panelId: "left" | "right";
     provider: string;
-    contextVersion: 1;
+    contextVersion: typeof CONTEXT_SCHEMA_VERSION;
     generatedAt: string;
   }>;
 
@@ -68,6 +75,14 @@ export interface ContextBundle {
   }> | null;
 
   readonly codeIntakeInstruction: string;
+
+  /**
+   * Bloques de texto ya formateados, con prioridad de orden — la pieza
+   * que hace que PromptAssembler no necesite conocer conceptos de dominio
+   * (Code Intake, Task, Knowledge, etc). Cada sección se genera en
+   * promptSections.ts, no acá ni en el assembler.
+   */
+  readonly sections: ReadonlyArray<PromptSection>;
 }
 
 export interface BuildContextParams {
@@ -81,36 +96,53 @@ export interface BuildContextParams {
   contextSource: string | null;
   knownFilePaths: string[];
   codeIntakeInstruction: string;
+  sequentialThinkingInstruction: string | null;
 }
 
 export function buildContext(params: BuildContextParams): ContextBundle {
+  const role = params.roleDef ? { id: params.roleDef.id, systemPrompt: params.roleDef.systemPrompt } : null;
+  const activeTask = null; // Sin implementar todavía — commit posterior.
+  const knowledge: ContextBundle["knowledge"] = []; // Sin implementar todavía — commit posterior.
+  const projectCanon =
+    params.contextText && params.contextSource
+      ? { source: params.contextSource, content: params.contextText }
+      : null;
+  const repositoryIndex = params.knownFilePaths.length > 0 ? { paths: params.knownFilePaths } : null;
+
+  const sections = buildPromptSections({
+    role,
+    activeTask,
+    knowledge,
+    sequentialThinkingInstruction: params.sequentialThinkingInstruction,
+    projectCanon,
+    repositoryIndex,
+    codeIntakeInstruction: params.codeIntakeInstruction,
+  });
+
   const bundle: ContextBundle = {
     meta: {
       projectId: params.projectId,
       sessionId: params.sessionId,
       panelId: params.panelId,
       provider: params.provider,
-      contextVersion: 1,
+      contextVersion: CONTEXT_SCHEMA_VERSION,
       generatedAt: new Date().toISOString(),
     },
-    role: params.roleDef ? { id: params.roleDef.id, systemPrompt: params.roleDef.systemPrompt } : null,
-    // Sin implementar todavía — commit posterior.
-    activeTask: null,
-    // Sin implementar todavía — commit posterior.
-    knowledge: [],
-    projectCanon:
-      params.contextText && params.contextSource
-        ? { source: params.contextSource, content: params.contextText }
-        : null,
+    role,
+    activeTask,
+    knowledge,
+    projectCanon,
     conversation: params.messages,
-    repositoryIndex: params.knownFilePaths.length > 0 ? { paths: params.knownFilePaths } : null,
+    repositoryIndex,
     codeIntakeInstruction: params.codeIntakeInstruction,
+    sections,
   };
 
-  // Commit 3: el bundle es una "fotografía" del contexto — nadie debería
-  // poder mutarlo de paso dentro de sendMessage(). Object.freeze es
-  // shallow en JS; se congela también `meta` (el objeto anidado con más
-  // chance de que alguien lo toque por error).
+  // El bundle es una "fotografía" del contexto — nadie debería poder
+  // mutarlo de paso dentro de sendMessage(). Object.freeze es shallow en
+  // JS; se congela también `meta` y `sections` (los más propensos a que
+  // alguien los toque por error).
   Object.freeze(bundle.meta);
+  Object.freeze(bundle.sections);
   return Object.freeze(bundle);
 }
