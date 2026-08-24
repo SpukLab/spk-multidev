@@ -862,7 +862,87 @@ aislado, porque valida API y UX mobile al mismo tiempo con datos reales.
 la propia validación (no un defecto que haya quedado pendiente). **Sprint 3
 (Knowledge Layer) no arranca todavía.**
 
-## 29. Pendiente de definir en próxima sesión
+## 29. Sprint 3 — Knowledge Layer MVP: CERRADO, validado en producción — RATIFICADA
+
+**Sprint 3 queda formalmente cerrado.** Conocimiento del proyecto ahora
+sobrevive a conversaciones, dispositivos y cambios de modelo — captura
+explícita, humano-controlada, sin extracción automática.
+
+**Qué se implementó:**
+- Tabla `knowledge_items` como proyección Tier A (mismo patrón que Task,
+  sección 28) — nunca la fuente de verdad, siempre derivada de
+  `KnowledgeCaptured`/`KnowledgePromoted`/`KnowledgeRejected`.
+- 11 tipos ratificados del canon (Observation, Insight, Decision,
+  Hypothesis, Experiment, Pattern, ADRCandidate, RejectedIdea,
+  OpenQuestion, ImplementationNote, TemporaryNote).
+- Estados `captured → promoted | rejected` únicamente — **`Archived` NO se
+  implementó**, porque no está ratificado en el Event Canon (sección 24) y
+  este sprint tuvo instrucción explícita de no inventar eventos en silencio.
+- Captura manual (`KnowledgeDrawer`, con selector opcional de Task) y
+  captura desde una respuesta de IA (botón inline en `Panel.tsx`, sin
+  cadena de modales).
+- `lib/db/knowledge.ts`: único punto de escritura, mismo patrón que
+  `tasks.ts` — validar → evento Tier A → recién ahí proyección.
+
+**Qué se validó manualmente en producción** (evidencia real, no simulada):
+creación manual; persistencia tras reload completo; vínculo a una Task
+existente; captura desde una respuesta de IA con `source_message_id`
+poblado con el id real de Supabase (confirmado con logs instrumentados en
+pantalla + verificación directa en la base, dos veces — con y sin sesión
+activa); `session_id` y `project_id` correctamente enlazados; promoción
+(`captured → promoted`); rechazo (`captured → rejected`); filtros por
+tipo/estado; UI mobile usable en iPhone real; los tres eventos
+(`KnowledgeCaptured`/`Promoted`/`Rejected`) confirmados en el Event Log.
+
+**Dos defectos reales encontrados y corregidos durante la propia
+validación** (no quedaron pendientes):
+
+1. **Carrera de tiempos en la captura desde respuesta de IA**: el botón
+   "Capturar como Knowledge" podía habilitarse antes de que `persistMessage()`
+   terminara, permitiendo capturar sin `source_message_id` real. Corregido
+   distinguiendo `dbId === undefined` ("todavía esperando") de `dbId === null`
+   ("ya resuelto, sin id real disponible") — el botón solo se deshabilita
+   en el primer caso. Encontrado un segundo camino al mismo síntoma
+   (mensajes de respuesta con error nunca llamaban a `persistMessage()`,
+   dejando `dbId` en `undefined` para siempre) — corregido asentando
+   `dbId: null` en el momento de creación de esos mensajes.
+2. **Vinculación cruzada de proyecto en Task**: `captureKnowledge()` no
+   validaba que el `taskId` recibido perteneciera al mismo `projectId` —
+   un caso hoy inalcanzable desde la UI real (el selector de Task ya
+   filtra por proyecto), pero la API en sí no lo impedía, lo que podía
+   generar procedencia engañosa. Corregido con una validación explícita
+   antes de emitir el evento Tier A.
+
+**Garantía Tier A para Knowledge:** igual que Task — `KnowledgeCaptured`,
+`KnowledgePromoted` y `KnowledgeRejected` no tienen ningún sistema externo
+de respaldo (a diferencia de GitHub/`agent_jobs` para Development/Execution).
+En `captureKnowledge`/`transitionKnowledge`, si `emitEvent()` devuelve
+`false` tras sus 3 reintentos, la función lanza antes de tocar
+`knowledge_items` — ninguna transición de Knowledge puede quedar como
+"mejor esfuerzo".
+
+**Garantías de procedencia:** toda entrada de Knowledge retiene `project_id`
+(obligatorio), y opcionalmente `task_id`, `session_id`, `source_message_id`
+y `source_event_id` — ninguno de estos cuatro es obligatorio, permitiendo
+conocimiento creado a mano sin ningún origen de IA.
+
+**Limitaciones conocidas, aceptadas para este sprint:**
+- `GET`/`PATCH /api/knowledge/[id]` no filtran por proyecto — consistente
+  con el modelo de seguridad ya existente en todo el hub (sin auth por
+  usuario), no es una regresión de Sprint 3.
+- Sin extracción automática de conocimiento desde cada mensaje — captura
+  siempre explícita, humano-iniciada.
+- `KnowledgeSuperseded` (ya ratificado en el canon) no se usa todavía —
+  no hace falta hasta que exista una noción de "reemplazar" una entrada
+  vieja por una nueva, fuera de alcance de este sprint.
+
+**Sin infraestructura nueva**: cero embeddings, cero vector DB, cero
+Graph-RAG — búsqueda por `.eq()` simple de Postgres, igual que Task.
+**La promoción de conocimiento sigue siendo 100% humano-controlada** —
+el modelo nunca decide por sí solo que algo es verdad canónica; capturar,
+promover y rechazar son siempre acciones explícitas del usuario.
+
+## 30. Pendiente de definir en próxima sesión
 
 - PWA instalable (ícono + splash en iPad/iPhone, hoy es solo una pestaña de Safari).
 - Editor de código embebido dentro del Code Intake (hoy el "sandbox" es
