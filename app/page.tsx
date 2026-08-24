@@ -12,6 +12,7 @@ import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
+import { buildContext } from "@/lib/contextBuilder";
 
 interface PanelState {
   provider: string;
@@ -328,42 +329,60 @@ export default function HomePage() {
 
     const roleDef = allRoles.find((r) => r.id === state.roleId);
 
+    // Sprint 4, commit 2/6 (ADR-011): el ContextBundle ahora es la fuente
+    // estructurada de estos datos — el armado de texto de abajo sigue
+    // siendo idéntico al de antes, solo que lee de `bundle.*` en vez de
+    // las variables sueltas. Sin PromptAssembler todavía (eso es el
+    // commit 3) — acá solo se prueba que el bundle carga la misma
+    // información, sin cambiar ni un carácter del resultado final.
+    const bundle = buildContext({
+      projectId: projectId ?? "",
+      sessionId: currentSessionId,
+      panelId: panel,
+      provider: state.provider,
+      roleDef: roleDef ? { id: roleDef.id, systemPrompt: roleDef.systemPrompt } : null,
+      messages: state.messages.map((m) => ({ role: m.role, content: m.content })),
+      contextText,
+      contextSource,
+      knownFilePaths,
+      codeIntakeInstruction: CODE_INTAKE_INSTRUCTION,
+    });
+
     // Bloque normativo del índice de archivos — no descriptivo. Se arma acá
     // (no en handleLoadProject) y se ubica justo antes de
     // CODE_INTAKE_INSTRUCTION a propósito: es la instrucción que consume
     // paths FILE:, así que el índice tiene que estar pegado a ella, no
     // diluido en la prosa de contextText (ver auditoría de LLM-perspective
     // prompt assembly).
-    const fileIndexBlock =
-      knownFilePaths.length > 0
-        ? [
-            "=== ÍNDICE DE ARCHIVOS DEL REPOSITORIO (AUTORITATIVO) ===",
-            "Esta es la lista completa y autoritativa de archivos que existen en este",
-            "repositorio ahora mismo. No es descriptiva ni parcial — es la fuente de",
-            "verdad sobre qué archivos existen.",
-            "",
-            "Reglas obligatorias:",
-            "- Todo path que uses en un bloque FILE: debe pertenecer a este índice,",
-            "  salvo que estés creando un archivo genuinamente nuevo (ACTION: write",
-            "  de una ruta que no aparece en la lista, a propósito).",
-            "- Nunca inventes ni asumas rutas de archivos que no estén en este índice.",
-            "- No vuelvas a pedir el árbol de archivos del repositorio — ya lo tenés",
-            "  completo acá abajo.",
-            "- Si no existe ningún archivo adecuado para la tarea pedida, decilo",
-            "  explícitamente en vez de inventar una ruta.",
-            "",
-            `Archivos (${knownFilePaths.length}):`,
-            ...knownFilePaths,
-            "=== FIN DEL ÍNDICE ===",
-          ].join("\n")
-        : null;
+    const fileIndexBlock = bundle.repositoryIndex
+      ? [
+          "=== ÍNDICE DE ARCHIVOS DEL REPOSITORIO (AUTORITATIVO) ===",
+          "Esta es la lista completa y autoritativa de archivos que existen en este",
+          "repositorio ahora mismo. No es descriptiva ni parcial — es la fuente de",
+          "verdad sobre qué archivos existen.",
+          "",
+          "Reglas obligatorias:",
+          "- Todo path que uses en un bloque FILE: debe pertenecer a este índice,",
+          "  salvo que estés creando un archivo genuinamente nuevo (ACTION: write",
+          "  de una ruta que no aparece en la lista, a propósito).",
+          "- Nunca inventes ni asumas rutas de archivos que no estén en este índice.",
+          "- No vuelvas a pedir el árbol de archivos del repositorio — ya lo tenés",
+          "  completo acá abajo.",
+          "- Si no existe ningún archivo adecuado para la tarea pedida, decilo",
+          "  explícitamente en vez de inventar una ruta.",
+          "",
+          `Archivos (${bundle.repositoryIndex.paths.length}):`,
+          ...bundle.repositoryIndex.paths,
+          "=== FIN DEL ÍNDICE ===",
+        ].join("\n")
+      : null;
 
     const systemContent = [
-      roleDef?.systemPrompt,
+      bundle.role?.systemPrompt,
       state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
-      contextText ? `Contexto del proyecto (${contextSource}):\n${contextText}` : null,
+      bundle.projectCanon ? `Contexto del proyecto (${bundle.projectCanon.source}):\n${bundle.projectCanon.content}` : null,
       fileIndexBlock,
-      CODE_INTAKE_INSTRUCTION,
+      bundle.codeIntakeInstruction,
     ]
       .filter(Boolean)
       .join("\n\n");
@@ -420,7 +439,7 @@ export default function HomePage() {
           sessionId: currentSessionId,
           messages: [
             ...(systemContent ? [{ role: "system", content: systemContent }] : []),
-            ...state.messages.map((m) => ({ role: m.role, content: m.content })),
+            ...bundle.conversation,
             { role: "user", content: text },
           ],
         }),
