@@ -38,12 +38,15 @@ export function TasksDrawer({
   open,
   onClose,
   projectId,
+  onActiveTaskChanged,
 }: {
   open: boolean;
   onClose: () => void;
   projectId: string | null;
+  onActiveTaskChanged?: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
@@ -68,8 +71,44 @@ export function TasksDrawer({
     }
   }
 
+  async function loadActiveTask() {
+    if (!projectId) return;
+    try {
+      const res = await fetch(`/api/active-task?projectId=${projectId}`);
+      const data = await res.json();
+      setActiveTaskId(data.activeTask?.id ?? null);
+    } catch {
+      // silencioso — no bloquea el resto del drawer
+    }
+  }
+
+  async function handleSetActiveTask(taskId: string | null) {
+    if (!projectId) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/active-task", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, taskId }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        // El evento Tier A no se pudo persistir — la Task activa NO cambió.
+        setError(`No se pudo cambiar la Task activa: ${data.error}`);
+      } else {
+        setActiveTaskId(data.activeTask?.id ?? null);
+        onActiveTaskChanged?.();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Error desconocido");
+    }
+  }
+
   useEffect(() => {
-    if (open && projectId) loadTasks();
+    if (open && projectId) {
+      loadTasks();
+      loadActiveTask();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, projectId]);
 
@@ -212,6 +251,27 @@ export function TasksDrawer({
                   </p>
                 )}
 
+                {activeTaskId === openTask.id ? (
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ color: "#4ade80", fontSize: 11 }}>★ Task activa del proyecto</span>
+                    <button
+                      onClick={() => handleSetActiveTask(null)}
+                      style={{ padding: "2px 8px", borderRadius: 6, background: "none", border: "1px solid #333", color: "#999", fontSize: 11 }}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                ) : (
+                  (openTask.status === "open" || openTask.status === "in_progress") && (
+                    <button
+                      onClick={() => handleSetActiveTask(openTask.id)}
+                      style={{ marginTop: 8, padding: "2px 8px", borderRadius: 6, background: "none", border: "1px solid #333", color: "#a78bfa", fontSize: 11 }}
+                    >
+                      ☆ Marcar como Task activa
+                    </button>
+                  )
+                )}
+
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 12 }}>
                   {openTask.status === "open" && (
                     <button onClick={() => handleTransition(openTask.id, "in_progress")} style={{ padding: "4px 10px", borderRadius: 6, background: "#1a1a22", border: "1px solid #333", color: "#fff" }}>
@@ -253,7 +313,10 @@ export function TasksDrawer({
                     onClick={() => handleOpenTask(t.id)}
                     style={{ padding: 10, marginBottom: 6, background: "#1a1a22", borderRadius: 8, cursor: "pointer" }}
                   >
-                    <div style={{ color: "#fff", fontSize: 13 }}>{t.title}</div>
+                    <div style={{ color: "#fff", fontSize: 13 }}>
+                      {activeTaskId === t.id && <span style={{ color: "#4ade80" }}>★ </span>}
+                      {t.title}
+                    </div>
                     <span style={{ color: STATUS_COLOR[t.status], fontSize: 11 }}>{STATUS_LABEL[t.status]}</span>
                   </div>
                 ))}

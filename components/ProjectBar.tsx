@@ -27,6 +27,7 @@ interface ProjectBarProps {
   onOpenChats: () => void;
   onOpenTasks: () => void;
   onOpenKnowledge: () => void;
+  activeTaskTitle?: string | null;
   githubToken?: string;
 }
 
@@ -49,6 +50,7 @@ export function ProjectBar({
   onOpenChats,
   onOpenTasks,
   onOpenKnowledge,
+  activeTaskTitle,
   githubToken,
 }: ProjectBarProps) {
   const [repoPickerOpen, setRepoPickerOpen] = useState(false);
@@ -120,6 +122,11 @@ export function ProjectBar({
         <button onClick={onOpenKnowledge} style={buttonStyle}>
           Knowledge
         </button>
+        {activeTaskTitle && (
+          <span style={{ color: "#4ade80", fontSize: 12, alignSelf: "center", marginLeft: 4 }}>
+            ★ {activeTaskTitle}
+          </span>
+        )}
       </div>
 
       {repoPickerOpen && (

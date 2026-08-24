@@ -114,6 +114,7 @@ export default function HomePage() {
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
   const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
   const [knowledgeDrawerOpen, setKnowledgeDrawerOpen] = useState(false);
+  const [activeTaskTitle, setActiveTaskTitle] = useState<string | null>(null);
   // INSTRUMENTACIÓN TEMPORAL — traza los 11 pasos del ciclo de vida de
   // "Capturar como Knowledge" con timestamp real, visible en pantalla
   // (sin devtools, mismo método ya usado para el debug del system prompt).
@@ -133,6 +134,20 @@ export default function HomePage() {
   }, []);
 
   const allRoles = [...defaultRoles, ...customRoles];
+
+  async function refreshActiveTask(pid: string | null) {
+    if (!pid) {
+      setActiveTaskTitle(null);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/active-task?projectId=${pid}`);
+      const data = await res.json();
+      setActiveTaskTitle(data.activeTask?.title ?? null);
+    } catch {
+      setActiveTaskTitle(null);
+    }
+  }
 
   async function handleCaptureKnowledge(params: { content: string; sourceMessageId?: string; type: string; title: string }) {
     logStep("8. handleCaptureKnowledge entered", { projectId, sessionId: currentSessionId, sourceMessageId: params.sourceMessageId });
@@ -193,6 +208,7 @@ export default function HomePage() {
         const sessRes = await fetch(`/api/sessions?projectId=${projData.project.id}`);
         const sessData = await sessRes.json();
         setSessions(sessData.sessions ?? []);
+        refreshActiveTask(projData.project.id);
       }
 
       const ctxRes = await fetch("/api/github/context", {
@@ -549,6 +565,7 @@ export default function HomePage() {
         onOpenChats={() => setChatsDrawerOpen(true)}
         onOpenTasks={() => setTasksDrawerOpen(true)}
         onOpenKnowledge={() => setKnowledgeDrawerOpen(true)}
+        activeTaskTitle={activeTaskTitle}
         githubToken={apiKeys.github}
       />
 
@@ -566,6 +583,7 @@ export default function HomePage() {
         open={tasksDrawerOpen}
         onClose={() => setTasksDrawerOpen(false)}
         projectId={projectId}
+        onActiveTaskChanged={() => refreshActiveTask(projectId)}
       />
 
       <KnowledgeDrawer
