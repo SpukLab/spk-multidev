@@ -12,7 +12,7 @@ import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
 import { getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
-import { buildContext, BuildContextParams } from "@/lib/contextBuilder";
+import { provideContext } from "@/lib/contextProvider";
 import { buildPromptSections, classifyKnowledgeForPrompt } from "@/lib/promptSections";
 import { assemblePrompt } from "@/lib/promptAssembler";
 
@@ -331,29 +331,11 @@ export default function HomePage() {
 
     const roleDef = allRoles.find((r) => r.id === state.roleId);
 
-    // Sprint 4, commit 4/6 (ADR-011): buildContext sigue sin hacer
-    // fetches — Task activa y Knowledge se cargan acá (misma responsabilidad
-    // que ya tenía este archivo para contextText/knownFilePaths) y se le
-    // pasan ya resueltos.
-    let activeTaskData: BuildContextParams["activeTask"] = null;
-    let knowledgeItemsData: BuildContextParams["knowledgeItems"] = [];
-    if (projectId) {
-      try {
-        const [activeTaskRes, knowledgeRes] = await Promise.all([
-          fetch(`/api/active-task?projectId=${projectId}`),
-          fetch(`/api/knowledge?projectId=${projectId}`),
-        ]);
-        const activeTaskJson = await activeTaskRes.json();
-        const knowledgeJson = await knowledgeRes.json();
-        activeTaskData = activeTaskJson.activeTask ?? null;
-        knowledgeItemsData = knowledgeJson.items ?? [];
-      } catch {
-        // Si falla, seguimos sin Task activa/Knowledge en este mensaje —
-        // no bloquea el chat, el resto del contexto sigue funcionando.
-      }
-    }
-
-    const bundle = buildContext({
+    // Post-commit 4 (ADR-011): la carga de Task activa + Knowledge ya no
+    // vive en page.tsx — se movió a ContextProvider, que va a ser el
+    // mismo punto de entrada que usen OpenHands, el Loop, o un Auditor
+    // más adelante, sin reimplementar estos dos fetches en cada lugar.
+    const bundle = await provideContext({
       projectId,
       sessionId: currentSessionId,
       panelId: panel,
@@ -365,8 +347,6 @@ export default function HomePage() {
       knownFilePaths,
       codeIntakeInstruction: CODE_INTAKE_INSTRUCTION,
       sequentialThinkingInstruction: state.sequentialThinking ? SEQUENTIAL_THINKING_INSTRUCTION : null,
-      activeTask: activeTaskData,
-      knowledgeItems: knowledgeItemsData,
     });
 
     // buildContext() entrega solo datos (ContextBundle). buildPromptSections
@@ -395,17 +375,19 @@ export default function HomePage() {
       projectId,
       entityId: currentSessionId,
       payload: {
-        // Commit 4/6: el evento registra DECISIONES, no texto — nunca el
-        // prompt serializado. Con esto alcanza para responder después
-        // "por qué se armó este contexto así" sin guardar nada pesado
-        // ni potencialmente sensible en el Event Log.
+        // El evento registra DECISIONES, no texto — nunca el prompt
+        // serializado. Los títulos son etiquetas cortas identificatorias
+        // (no el contenido completo del Knowledge), se incluyen para que
+        // el Inspector (próximo commit) no necesite un fetch por cada id.
         contextVersion: bundle.meta.contextVersion,
         provider: state.provider,
+        panelId: panel,
         activeTaskId: bundle.activeTask?.id ?? null,
-        includedKnowledgeIds: classifiedKnowledge.map((k) => k.id),
-        omittedKnowledgeIds: bundle.knowledge
+        activeTaskTitle: bundle.activeTask?.title ?? null,
+        includedKnowledge: classifiedKnowledge.map((k) => ({ id: k.id, title: k.title })),
+        omittedKnowledge: bundle.knowledge
           .filter((k) => !classifiedKnowledge.some((c) => c.id === k.id))
-          .map((k) => k.id),
+          .map((k) => ({ id: k.id, title: k.title })),
         conversationPairs: Math.floor(bundle.conversation.length / 2),
         repositoryPaths: bundle.repositoryIndex?.paths.length ?? 0,
         projectCanonIncluded: Boolean(bundle.projectCanon),
