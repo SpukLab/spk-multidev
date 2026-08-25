@@ -14,6 +14,7 @@ import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION 
 import { getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys, CustomRole, loadApiKeys, saveApiKeys, loadCustomRoles, saveCustomRoles } from "@/lib/clientStorage";
 import { provideContext } from "@/lib/contextProvider";
+import { applyContextBudget } from "@/lib/contextBudget";
 import { buildPromptSections, classifyKnowledgeForPrompt } from "@/lib/promptSections";
 import { assemblePrompt } from "@/lib/promptAssembler";
 
@@ -355,20 +356,40 @@ export default function HomePage() {
     // es la proyección — la única pieza que sabe de dominio (Task, Knowledge,
     // Code Intake). assemblePrompt es un serializador puro, ni siquiera
     // conoce el ContextBundle.
-    const sections = buildPromptSections(bundle);
+    // Sprint 4, commit 6/6: presupuesto real — nunca corta unidades
+    // atómicas, prioridad fija (Task/promoted nunca se tocan; captured,
+    // conversación, canon se recortan enteros en ese orden si hace falta).
+    const budgetThreshold = CONTEXT_SIZE_WARNING_THRESHOLD[state.provider] ?? 150000;
+    const { bundle: budgetedBundle, omittedByBudget } = applyContextBudget(bundle, budgetThreshold);
+
+    const sections = buildPromptSections(budgetedBundle);
     // Misma clasificación que ya usa buildPromptSections internamente —
     // se reusa acá (no se duplica la lógica) para saber exactamente qué
-    // quedó incluido/omitido y poder reportarlo en ContextBuilt.
-    const classifiedKnowledge = classifyKnowledgeForPrompt(bundle);
+    // quedó incluido/omitido y poder reportarlo en ContextBuilt. Corre
+    // sobre el bundle YA presupuestado — lo que el presupuesto recortó
+    // nunca llega a pasar por acá.
+    const classifiedKnowledge = classifyKnowledgeForPrompt(budgetedBundle);
     const { systemContent, messages: assembledMessages } = assemblePrompt({
       sections,
-      conversation: bundle.conversation,
+      conversation: budgetedBundle.conversation,
       userMessage: text,
     });
 
-    const historyChars = state.messages.reduce((acc, m) => acc + m.content.length, 0);
+    const historyChars = budgetedBundle.conversation.reduce((acc, m) => acc + m.content.length, 0);
     const totalChars = systemContent.length + historyChars + text.length;
-    const threshold = CONTEXT_SIZE_WARNING_THRESHOLD[state.provider] ?? 150000;
+
+    // Regla 3 (commit 6): se registra exactamente qué quedó afuera y por
+    // qué — "not-relevant" (no vinculado a la Task activa, decisión de
+    // classifyKnowledgeForPrompt) vs "budget" (recortado por tamaño,
+    // decisión de applyContextBudget). Son conjuntos disjuntos: el
+    // presupuesto corre primero sobre el bundle crudo, la clasificación
+    // corre después sobre lo que sobrevivió al presupuesto.
+    const omittedByClassification = budgetedBundle.knowledge
+      .filter((k) => !classifiedKnowledge.some((c) => c.id === k.id))
+      .map((k) => ({ id: k.id, title: k.title, reason: "not-relevant" as const }));
+    const omittedKnowledgeByBudget = omittedByBudget
+      .filter((o) => o.type === "knowledge")
+      .map((o) => ({ id: o.id, title: o.title, reason: "budget" as const }));
 
     emitClientEvent({
       eventType: "ContextBuilt",
@@ -379,28 +400,29 @@ export default function HomePage() {
       payload: {
         // El evento registra DECISIONES, no texto — nunca el prompt
         // serializado. Los títulos son etiquetas cortas identificatorias
-        // (no el contenido completo del Knowledge), se incluyen para que
-        // el Inspector (próximo commit) no necesite un fetch por cada id.
-        contextVersion: bundle.meta.contextVersion,
+        // (no el contenido completo del Knowledge), para que el
+        // Inspector no necesite un fetch por cada id.
+        contextVersion: budgetedBundle.meta.contextVersion,
         provider: state.provider,
         panelId: panel,
-        activeTaskId: bundle.activeTask?.id ?? null,
-        activeTaskTitle: bundle.activeTask?.title ?? null,
+        activeTaskId: budgetedBundle.activeTask?.id ?? null,
+        activeTaskTitle: budgetedBundle.activeTask?.title ?? null,
         includedKnowledge: classifiedKnowledge.map((k) => ({ id: k.id, title: k.title })),
-        omittedKnowledge: bundle.knowledge
-          .filter((k) => !classifiedKnowledge.some((c) => c.id === k.id))
-          .map((k) => ({ id: k.id, title: k.title })),
-        conversationPairs: Math.floor(bundle.conversation.length / 2),
-        repositoryPaths: bundle.repositoryIndex?.paths.length ?? 0,
-        projectCanonIncluded: Boolean(bundle.projectCanon),
+        omittedKnowledge: [...omittedKnowledgeByBudget, ...omittedByClassification],
+        budgetOmissions: omittedByBudget
+          .filter((o) => o.type !== "knowledge")
+          .map((o) => ({ type: o.type, title: o.title })),
+        conversationPairs: Math.floor(budgetedBundle.conversation.length / 2),
+        repositoryPaths: budgetedBundle.repositoryIndex?.paths.length ?? 0,
+        projectCanonIncluded: Boolean(budgetedBundle.projectCanon),
         totalCharacters: totalChars,
       },
     });
 
-    if (totalChars > threshold) {
+    if (totalChars > budgetThreshold) {
       const proceed = window.confirm(
-        `El contexto de este mensaje es grande (~${Math.round(totalChars / 1000)}k caracteres) ` +
-          `y ${state.provider} puede truncarlo sin avisar si supera su ventana real. ¿Enviar igual?`
+        `El contexto de este mensaje sigue siendo grande (~${Math.round(totalChars / 1000)}k caracteres) ` +
+          `incluso después de aplicar el presupuesto, y ${state.provider} puede truncarlo sin avisar. ¿Enviar igual?`
       );
       if (!proceed) {
         emitClientEvent({
@@ -409,7 +431,7 @@ export default function HomePage() {
           source: "user",
           projectId,
           entityId: currentSessionId,
-          payload: { provider: state.provider, totalChars, threshold },
+          payload: { provider: state.provider, totalChars, threshold: budgetThreshold },
         });
         return;
       }

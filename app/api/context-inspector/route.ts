@@ -18,23 +18,18 @@ export async function GET(req: NextRequest) {
     }
 
     const supabase = getSupabaseServerClient();
-    let query = supabase
+    const { data, error } = await supabase
       .from("events")
       .select("payload, timestamp")
       .eq("event_type", "ContextBuilt")
       .eq("entity_id", sessionId)
       .order("timestamp", { ascending: false })
-      .limit(panelId ? 10 : 1);
+      .limit(50); // margen para filtrar por panel en memoria y quedarnos con 10 reales
 
-    const { data, error } = await query;
     if (error) throw error;
 
-    // Si se pidió un panel puntual, filtramos en memoria (el payload
-    // guarda panelId, pero no hay índice por eso — volumen bajo, no
-    // justifica una columna nueva todavía).
-    const match = panelId ? data?.find((d) => d.payload?.panelId === panelId) : data?.[0];
-
-    return NextResponse.json({ contextBuilt: match ?? null });
+    const filtered = panelId ? (data ?? []).filter((d) => d.payload?.panelId === panelId) : data ?? [];
+    return NextResponse.json({ history: filtered.slice(0, 10) });
   } catch (err: unknown) {
     return NextResponse.json({ error: getErrorMessage(err) }, { status: 500 });
   }

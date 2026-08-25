@@ -9,19 +9,31 @@ interface ContextBuiltPayload {
   activeTaskId: string | null;
   activeTaskTitle: string | null;
   includedKnowledge: Array<{ id: string; title: string }>;
-  omittedKnowledge: Array<{ id: string; title: string }>;
+  omittedKnowledge: Array<{ id: string; title: string; reason?: "not-relevant" | "budget" }>;
+  budgetOmissions?: Array<{ type: string; title: string }>;
   conversationPairs: number;
   repositoryPaths: number;
   projectCanonIncluded: boolean;
   totalCharacters: number;
 }
 
+interface HistoryEntry {
+  payload: ContextBuiltPayload;
+  timestamp: string;
+}
+
+const REASON_LABEL: Record<string, string> = {
+  "not-relevant": "no vinculada a la Task activa",
+  budget: "omitida por presupuesto",
+};
+
 /**
- * Sprint 4, commit 5/6 — ADR-011.
+ * Sprint 4, commit 5/6 (+ historial) — ADR-011.
  *
  * "¿Qué dijo el modelo?" ya lo respondía el chat. Esto responde "¿por
- * qué respondió eso?" — lee el último ContextBuilt real (Event Log, ya
- * ratificado), sin ningún subsistema nuevo, sin guardar el prompt.
+ * qué respondió eso?" — lee el Event Log real (ContextBuilt, ya
+ * ratificado), navegable hacia atrás — no solo el último. Mismos datos
+ * que ya estaban en `events`, solo una forma distinta de consultarlos.
  */
 export function ContextInspector({
   open,
@@ -33,8 +45,8 @@ export function ContextInspector({
   sessionId: string | null;
 }) {
   const [panelId, setPanelId] = useState<"left" | "right">("left");
-  const [payload, setPayload] = useState<ContextBuiltPayload | null>(null);
-  const [timestamp, setTimestamp] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [index, setIndex] = useState(0); // 0 = más reciente
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,20 +54,21 @@ export function ContextInspector({
     if (!open || !sessionId) return;
     setLoading(true);
     setError(null);
+    setIndex(0);
     fetch(`/api/context-inspector?sessionId=${sessionId}&panelId=${panelId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.error) setError(data.error);
-        else {
-          setPayload(data.contextBuilt?.payload ?? null);
-          setTimestamp(data.contextBuilt?.timestamp ?? null);
-        }
+        else setHistory(data.history ?? []);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Error desconocido"))
       .finally(() => setLoading(false));
   }, [open, sessionId, panelId]);
 
   if (!open) return null;
+
+  const current = history[index];
+  const payload = current?.payload;
 
   return (
     <div
@@ -91,14 +104,34 @@ export function ContextInspector({
         {!sessionId && <p style={{ color: "#888", fontSize: 13 }}>No hay sesión activa todavía — mandá un mensaje primero.</p>}
         {loading && <p style={{ color: "#888", fontSize: 13 }}>Cargando...</p>}
         {error && <p style={{ color: "#f87171", fontSize: 13 }}>{error}</p>}
-        {sessionId && !loading && !payload && !error && (
+        {sessionId && !loading && history.length === 0 && !error && (
           <p style={{ color: "#888", fontSize: 13 }}>Todavía no se armó contexto en este panel.</p>
         )}
 
         {payload && (
           <div style={{ fontSize: 13, color: "#ddd", lineHeight: 1.7 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <button
+                onClick={() => setIndex((i) => Math.min(i + 1, history.length - 1))}
+                disabled={index >= history.length - 1}
+                style={{ background: "none", border: "1px solid #333", color: index >= history.length - 1 ? "#444" : "#a78bfa", borderRadius: 6, padding: "2px 8px", fontSize: 12 }}
+              >
+                ◀ Anterior
+              </button>
+              <span style={{ color: "#666", fontSize: 11 }}>
+                {index + 1} de {history.length}
+              </span>
+              <button
+                onClick={() => setIndex((i) => Math.max(i - 1, 0))}
+                disabled={index === 0}
+                style={{ background: "none", border: "1px solid #333", color: index === 0 ? "#444" : "#a78bfa", borderRadius: 6, padding: "2px 8px", fontSize: 12 }}
+              >
+                Siguiente ▶
+              </button>
+            </div>
+
             <div style={{ color: "#666", fontSize: 11, marginBottom: 10 }}>
-              v{payload.contextVersion} · {payload.provider} · {timestamp ? new Date(timestamp).toLocaleString() : ""}
+              v{payload.contextVersion} · {payload.provider} · {new Date(current.timestamp).toLocaleString()}
             </div>
 
             <div style={{ fontWeight: 600, color: "#a78bfa", marginTop: 8 }}>Task</div>
@@ -112,7 +145,14 @@ export function ContextInspector({
               <div key={k.id} style={{ color: "#4ade80" }}>✓ {k.title}</div>
             ))}
             {payload.omittedKnowledge.map((k) => (
-              <div key={k.id} style={{ color: "#666" }}>○ {k.title} (omitida)</div>
+              <div key={k.id} style={{ color: "#666" }}>
+                ✕ {k.title} ({k.reason ? REASON_LABEL[k.reason] ?? k.reason : "omitida"})
+              </div>
+            ))}
+            {payload.budgetOmissions?.map((b, i) => (
+              <div key={i} style={{ color: "#666" }}>
+                ✕ {b.title} (omitida por presupuesto)
+              </div>
             ))}
 
             <div style={{ fontWeight: 600, color: "#a78bfa", marginTop: 8 }}>Conversación</div>
