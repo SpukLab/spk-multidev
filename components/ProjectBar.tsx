@@ -27,6 +27,7 @@ interface ProjectBarProps {
   onOpenChats: () => void;
   onOpenTasks: () => void;
   onOpenKnowledge: () => void;
+  onOpenContextInspector: () => void;
   activeTaskTitle?: string | null;
   githubToken?: string;
 }
@@ -50,6 +51,7 @@ export function ProjectBar({
   onOpenChats,
   onOpenTasks,
   onOpenKnowledge,
+  onOpenContextInspector,
   activeTaskTitle,
   githubToken,
 }: ProjectBarProps) {
@@ -121,6 +123,9 @@ export function ProjectBar({
         </button>
         <button onClick={onOpenKnowledge} style={buttonStyle}>
           Knowledge
+        </button>
+        <button onClick={onOpenContextInspector} style={buttonStyle}>
+          🔍 Contexto
         </button>
         {activeTaskTitle && (
           <span style={{ color: "#4ade80", fontSize: 12, alignSelf: "center", marginLeft: 4 }}>

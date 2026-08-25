@@ -7,6 +7,7 @@ import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
 import { TasksDrawer } from "@/components/TasksDrawer";
 import { KnowledgeDrawer } from "@/components/KnowledgeDrawer";
+import { ContextInspector } from "@/components/ContextInspector";
 import { SettingsDrawer } from "@/components/SettingsDrawer";
 import { ProjectBar } from "@/components/ProjectBar";
 import { defaultRoles, CODE_INTAKE_INSTRUCTION, SEQUENTIAL_THINKING_INSTRUCTION } from "@/lib/roles";
@@ -117,6 +118,7 @@ export default function HomePage() {
   const [chatsDrawerOpen, setChatsDrawerOpen] = useState(false);
   const [tasksDrawerOpen, setTasksDrawerOpen] = useState(false);
   const [knowledgeDrawerOpen, setKnowledgeDrawerOpen] = useState(false);
+  const [contextInspectorOpen, setContextInspectorOpen] = useState(false);
   const [activeTaskTitle, setActiveTaskTitle] = useState<string | null>(null);
   // INSTRUMENTACIÓN TEMPORAL — traza los 11 pasos del ciclo de vida de
   // "Capturar como Knowledge" con timestamp real, visible en pantalla
@@ -570,6 +572,7 @@ export default function HomePage() {
         onOpenChats={() => setChatsDrawerOpen(true)}
         onOpenTasks={() => setTasksDrawerOpen(true)}
         onOpenKnowledge={() => setKnowledgeDrawerOpen(true)}
+        onOpenContextInspector={() => setContextInspectorOpen(true)}
         activeTaskTitle={activeTaskTitle}
         githubToken={apiKeys.github}
       />
@@ -595,6 +598,12 @@ export default function HomePage() {
         open={knowledgeDrawerOpen}
         onClose={() => setKnowledgeDrawerOpen(false)}
         projectId={projectId}
+      />
+
+      <ContextInspector
+        open={contextInspectorOpen}
+        onClose={() => setContextInspectorOpen(false)}
+        sessionId={currentSessionId}
       />
 
       <SettingsDrawer
