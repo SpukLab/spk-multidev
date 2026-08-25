@@ -285,6 +285,35 @@ export default function HomePage() {
     setRight((s) => ({ ...s, messages: [] }));
   }
 
+  // Bug real encontrado en validación (capturas + Event Log con
+  // entity_id: NULL en ContextBuilt/MessageSent/ResponseCompleted):
+  // sendMessage() nunca verificaba que existiera una sesión antes de
+  // construir contexto y llamar al LLM — si el usuario nunca tocaba
+  // "+ Nuevo chat" a mano, todo el ciclo corría igual, en silencio, sin
+  // persistir nada y sin que ningún evento quedara asociado a una sesión
+  // real. Se corrige creando la sesión automáticamente acá, ANTES de
+  // seguir — nunca al final, como pasaba antes. Devuelve el id recién
+  // creado (no el estado de React, que todavía no se actualizó en este
+  // mismo tick) para que sendMessage lo use de inmediato.
+  async function ensureSession(): Promise<string | null> {
+    if (currentSessionId) return currentSessionId;
+    if (!projectId) return null;
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      const data = await res.json();
+      if (data.error || !data.session) return null;
+      setCurrentSessionId(data.session.id);
+      setSessions((prev) => [data.session, ...prev]);
+      return data.session.id as string;
+    } catch {
+      return null;
+    }
+  }
+
   async function handleSelectSession(sessionId: string) {
     setCurrentSessionId(sessionId);
     const res = await fetch(`/api/sessions/${sessionId}/messages`);
@@ -300,10 +329,21 @@ export default function HomePage() {
     setRight((s) => ({ ...s, messages: toPanelMsgs("right") }));
   }
 
-  async function persistMessage(panel: "left" | "right", role: "user" | "assistant", content: string): Promise<string | null> {
-    if (!currentSessionId) return null;
+  // Bug real: esta función leía `currentSessionId` directo del closure de
+  // React — aunque sendMessage() ya hubiera resuelto un sessionId nuevo
+  // con ensureSession() en el mismo tick, esta función (definida aparte,
+  // no anidada) seguía viendo el valor viejo capturado en el render
+  // anterior. Se corrige recibiendo el sessionId explícito como parámetro,
+  // igual que ya se hace con provideContext().
+  async function persistMessage(
+    panel: "left" | "right",
+    role: "user" | "assistant",
+    content: string,
+    sessionId: string | null
+  ): Promise<string | null> {
+    if (!sessionId) return null;
     try {
-      const res = await fetch(`/api/sessions/${currentSessionId}/messages`, {
+      const res = await fetch(`/api/sessions/${sessionId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ panel, role, content }),
@@ -334,13 +374,19 @@ export default function HomePage() {
 
     const roleDef = allRoles.find((r) => r.id === state.roleId);
 
+    // Fix del bug real de la validación: resolver/crear la sesión ANTES
+    // de construir contexto — nunca al final, como pasaba antes. `sessionId`
+    // es el valor local recién resuelto, no `currentSessionId` (el estado
+    // de React todavía no se actualizó en este mismo tick).
+    const sessionId = await ensureSession();
+
     // Post-commit 4 (ADR-011): la carga de Task activa + Knowledge ya no
     // vive en page.tsx — se movió a ContextProvider, que va a ser el
     // mismo punto de entrada que usen OpenHands, el Loop, o un Auditor
     // más adelante, sin reimplementar estos dos fetches en cada lugar.
     const bundle = await provideContext({
       projectId,
-      sessionId: currentSessionId,
+      sessionId,
       panelId: panel,
       provider: state.provider,
       roleDef: roleDef ? { id: roleDef.id, systemPrompt: roleDef.systemPrompt } : null,
@@ -396,7 +442,7 @@ export default function HomePage() {
       actor: "user",
       source: "System",
       projectId,
-      entityId: currentSessionId,
+      entityId: sessionId,
       payload: {
         // El evento registra DECISIONES, no texto — nunca el prompt
         // serializado. Los títulos son etiquetas cortas identificatorias
@@ -430,7 +476,7 @@ export default function HomePage() {
           actor: "user",
           source: "user",
           projectId,
-          entityId: currentSessionId,
+          entityId: sessionId,
           payload: { provider: state.provider, totalChars, threshold: budgetThreshold },
         });
         return;
@@ -439,7 +485,7 @@ export default function HomePage() {
 
     const userMsg: PanelMessage = { id: nextId(), role: "user", content: text };
     setState({ ...state, messages: [...state.messages, userMsg], busy: true });
-    persistMessage(panel, "user", text);
+    persistMessage(panel, "user", text, sessionId);
 
     try {
       const res = await fetch("/api/chat", {
@@ -450,12 +496,12 @@ export default function HomePage() {
           model: state.model,
           apiKey: apiKeys[state.provider as keyof StoredApiKeys],
           projectId,
-          sessionId: currentSessionId,
+          sessionId,
           messages: assembledMessages,
         }),
       });
       const data = await res.json();
-      logStep("1. AI response received", { hasError: Boolean(data.error), projectId, sessionId: currentSessionId });
+      logStep("1. AI response received", { hasError: Boolean(data.error), projectId, sessionId });
 
       const assistantContent = data.error ? `Error: ${data.error}` : data.content;
       const assistantMsg: PanelMessage = {
@@ -480,9 +526,9 @@ export default function HomePage() {
       logStep("2. message inserted into React state", { msgId: assistantMsg.id, dbId: assistantMsg.dbId });
 
       if (!data.error) {
-        logStep("3. persistMessage() called", { sessionId: currentSessionId });
-        persistMessage(panel, "assistant", assistantContent).then((messageId) => {
-          logStep("4. persistMessage() resolved", { messageId, sessionId: currentSessionId });
+        logStep("3. persistMessage() called", { sessionId });
+        persistMessage(panel, "assistant", assistantContent, sessionId).then((messageId) => {
+          logStep("4. persistMessage() resolved", { messageId, sessionId });
           // Antes: si messageId venía null (sin sesión activa), se cortaba
           // acá sin tocar el estado — dbId quedaba `undefined` para
           // siempre, y el botón de Knowledge quedaba deshabilitado
