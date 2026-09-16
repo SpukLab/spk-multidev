@@ -10,9 +10,9 @@ Candidate branch is stacked on:
 
 No production database operation was performed.
 
-## Artifact scope
+## Candidate scope
 
-Validated candidate scope now contains:
+Repo-only candidate artifacts include:
 
 - `supabase/candidates/observatory_v1_candidate.sql`
 - `lib/observatory/contracts.ts`
@@ -20,122 +20,146 @@ Validated candidate scope now contains:
 - `fixtures/observatory/repository-intelligence.json`
 - `fixtures/observatory/capability-acquisition-framework.json`
 - `fixtures/observatory/exp-2026-013.json`
+- `scripts/validate-observatory.mjs`
 - `scripts/validate-observatory-fixtures.mjs`
 - `package.json` validation command
 - `.github/workflows/observatory-candidates.yml`
 
-The SQL file is deliberately outside `supabase/migrations/` and is not runtime-wired.
+The SQL file remains deliberately outside `supabase/migrations/` and nothing is runtime-wired.
 
-## TypeScript static validation
+## Reproducible command
 
-Initial local disposable validation compiled the exact candidate contracts/invariants with strict TypeScript and produced zero errors.
-
-The repository now contains the reproducible command:
+The repository contains:
 
 ```text
 npm run validate:observatory
 ```
 
-That command uses the repository-pinned TypeScript dependency and performs:
+This command uses the repository-pinned TypeScript compiler and:
 
-1. strict/noEmit compilation of `lib/observatory/contracts.ts` and `lib/observatory/invariants.ts`;
-2. zero-dependency fixture validation with Node.
+1. compiles `contracts.ts` and `invariants.ts` under strict TypeScript into a disposable temporary directory;
+2. executes the **actual compiled invariant functions**;
+3. validates the three reference fixtures;
+4. statically validates required SQL adapter contracts;
+5. verifies no application runtime wiring imports Observatory candidate code;
+6. removes the temporary compiled output.
+
+No test framework or new npm dependency was added.
 
 ## Pure invariant execution
 
-Initial direct Node execution produced **10/10 PASS** for the pure invariants.
+Latest remote validation result:
 
-Checks covered:
+**26/26 PASS**
 
-1. epistemic confidence accepts null/0/1;
-2. confidence > 1 is rejected;
-3. ordinary Observatory API rejects `canon`;
-4. ordinary Observatory accepts non-canon stage;
-5. curation transition cannot also change epistemic stage;
-6. curation transition may preserve epistemic stage;
-7. epistemic transition cannot also change curation status;
-8. identical context fingerprints disprove an independence claim;
-9. distinct non-parent lineage is not automatically marked dependent;
-10. context canonicalization removes `generatedAt` and deterministically sorts object keys.
+Coverage includes:
 
-These checks validate pure domain behavior only. They do not validate persistence.
+- epistemic confidence null / 0..1;
+- rejection of invalid confidence;
+- ordinary Observatory rejection of `canon` promotion;
+- curation status cannot implicitly change epistemic stage;
+- epistemic transition cannot implicitly change curation status;
+- same context fingerprint disproves an independence claim;
+- distinct non-parent lineage is not automatically marked dependent;
+- deterministic context canonicalization removes volatile `generatedAt` fields;
+- canonical Observatory Knowledge requires project, Research Run, subject, structured payload, producer Agent/version, kind and explicit evidence list;
+- historical Agent version remains attributable and is not replaced by a newer Agent version;
+- `WAIT`, `RESEARCH`, `REJECT`, `DO_NOTHING` are valid right-to-stop research decisions;
+- contradictory Knowledge records are both accepted by the pure domain layer rather than overwriting one another.
 
-## Reproducible fixture validator
+These checks validate domain semantics, not database persistence.
 
-`scripts/validate-observatory-fixtures.mjs` validates all three durable fixtures without introducing a test framework or new npm dependency.
+## Fixture/static validation
 
-It checks, among other things:
+Latest remote validation result:
+
+**3/3 fixtures PASS**
+
+The validator checks:
 
 - unique record identity;
 - Research Run → Research Intent linkage;
 - Agent existence/version matching for Knowledge, Relationships, Transitions and lineage;
-- epistemic stage vocabulary and prohibition of self-promoted `canon` fixtures;
-- evidence references;
-- confidence range 0..1/null;
+- structured Knowledge payload and explicit evidence list;
+- epistemic stage vocabulary and no fixture self-promotion to `canon`;
+- Evidence identity references;
+- confidence 0..1/null;
 - Research Decision next-action vocabulary;
 - explicit lineage;
 - Repository Intelligence immutable subject pinning;
-- CAF separation between capability knowledge and acquisition decision;
-- EXP-2026-013 exact FKC blob SHA, multiple auditor Agents, dependent lineage and a distinct-context candidate for independence review.
+- CAF separation of capability knowledge from acquisition decision;
+- EXP-2026-013 exact FKC-000 blob SHA, multiple auditor Agents, explicitly dependent lineage and distinct-context lineage candidate.
 
-A distinct-context pair is deliberately **not** declared independent by the validator; it is only eligible for later independence assessment because absence of known dependence is not proof of independence.
+A distinct-context pair is deliberately **not** declared independent merely because no direct dependency is known.
 
-## GitHub Actions validation
+Static SQL checks assert that the candidate still contains:
 
-A scoped workflow now runs only for Observatory candidate paths:
+- all five canonical primitive projections (`Knowledge` remains the existing physical store);
+- Relationship evidence storage;
+- source and target adjacency indexes;
+- structured canonical Knowledge payload;
+- producer Agent version;
+- numeric epistemic confidence;
+- canonical completeness constraint;
+- server-only RLS/revocation posture for new primitive adapter tables;
+- no silent Realtime publication for those tables.
 
-`.github/workflows/observatory-candidates.yml`
+The validator also scans application code to ensure no candidate Observatory module is runtime-wired before DB validation.
+
+## GitHub Actions evidence
+
+Workflow:
+
+`Observatory candidate validation`
 
 Security posture:
 
-- repository: public;
-- workflow permissions: `contents: read` only;
-- no secrets;
+- public repository;
+- workflow token: `contents: read` plus GitHub metadata read;
 - no Supabase credentials;
 - no production access;
 - no deployment step.
 
-Verified remote run:
+Latest strengthened push run:
 
-- workflow: `Observatory candidate validation`
-- run id: `35115074753`
-- triggering SHA: `c08b5ac68ba7e8596ff366135884a7e5a4ba1166`
-- event: `push`
+- run id: `35115666713`
+- triggering SHA: `138cc9811b2df1e53b477f05a10d4bdb2fa4d4a1`
 - result: **SUCCESS**
+- Node requested for project validation: `20.20.2`
+- `npm ci`: PASS
+- pure invariant validation: **26 PASS**
+- fixture/static validation: **3/3 PASS**
 
-Successful steps included:
+The GitHub runner also warns that `actions/checkout@v4` and `actions/setup-node@v4` target a deprecated Node 20 action runtime and are currently forced onto Node 24 internally. This is CI-maintenance evidence, not an Observatory correctness failure.
 
-- Checkout
-- Setup Node 20
-- `npm ci`
-- `npm run validate:observatory`
+## Dependency-security observation
 
-This confirms the validation command passes against the actual GitHub branch with the repository dependency lock, not only against reconstructed local files.
+`npm audit` on the same remote SHA reports **7 pre-existing dependency-tree vulnerabilities**:
 
-## Fixture review
+- 2 low
+- 2 moderate
+- 2 high
+- 1 critical
 
-All three fixture artifacts are durable on the remote branch.
+Reported packages:
 
-They exercise distinct research semantics:
+- `@octokit/plugin-paginate-rest` — moderate, transitive
+- `@octokit/rest` — moderate, direct
+- `@supabase/auth-js` — low, transitive
+- `@supabase/supabase-js` — low, direct
+- `nanoid` — high, transitive
+- `next` — critical, direct
+- `postcss` — high, transitive
 
-- Repository Intelligence: pinned external subject + evidence + reversible-pilot decision;
-- CAF: knowledge about a capability remains distinct from authority/decision to acquire it;
-- EXP-2026-013: exact FKC-000 blob identity, multiple versioned auditors, shared-context/dependent lineage, separately represented distinct-context lineage, unresolved uncertainty, explicit Research Decision.
+This is tracked separately in **Issue #6 — Security audit: pre-existing npm dependency vulnerabilities**.
 
-`ResearchFixture` explicitly includes `lineage: ResearchContributionLineage[]`, matching the fixture payloads.
-
-Fixture persistence/reconstruction remains unvalidated until a disposable DB exists.
+No dependency fix was applied automatically. In particular, npm proposes a major Next.js upgrade, so dependency remediation requires separate research and compatibility validation.
 
 ## SQL status
 
-`observatory_v1_candidate.sql` has received static review against:
+`observatory_v1_candidate.sql` remains:
 
-- the eight-file recovered production migration baseline;
-- the live schema audit recorded in PR #3;
-- canonical primitive contracts from Governance Canon / Spk_Alchemy;
-- the portable TypeScript contracts.
-
-Result: **STATIC-ONLY CANDIDATE**.
+**STATIC-ONLY CANDIDATE**
 
 Not claimed:
 
@@ -143,7 +167,8 @@ Not claimed:
 - constraint/FK/index runtime behavior;
 - PostgREST/Data API behavior after migration;
 - rollback behavior;
-- Supabase advisor result after candidate DDL.
+- Supabase advisor result after candidate DDL;
+- fixture persistence/reconstruction from a real DB.
 
 Those require a disposable PostgreSQL/Supabase environment. Production is not an acceptable validation target.
 
@@ -151,13 +176,14 @@ Those require a disposable PostgreSQL/Supabase environment. Production is not an
 
 Do not:
 
-- move the SQL into `supabase/migrations/`;
+- move candidate SQL into `supabase/migrations/`;
 - wire runtime APIs to candidate columns/tables;
 - apply candidate DDL to production;
-- claim the DB layer is validated.
+- claim the DB layer is validated;
+- mix dependency-security upgrades into this Observatory candidate PR.
 
-The next database-dependent step remains blocked until a free disposable local PostgreSQL/Supabase environment becomes available, or the user later explicitly approves another isolated validation environment.
+The next database-dependent step remains blocked until a free disposable local PostgreSQL/Supabase environment becomes available, or the user explicitly authorizes another isolated validation environment.
 
 ## Verdict
 
-**Repo-only candidate block now has reproducible remote validation and is suitable for review. Database implementation remains intentionally stopped.**
+**Repo-only Observatory candidate now has reproducible remote compilation, executable invariant validation, fixture validation, static SQL contract validation, and a scoped CI gate. Database implementation remains intentionally stopped.**
