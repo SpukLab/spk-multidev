@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "validate:observatory": "tsc --strict --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target ES2020 lib/observatory/contracts.ts lib/observatory/invariants.ts && node scripts/validate-observatory-fixtures.mjs"
   },
   "dependencies": {
     "next": "14.2.35",
