@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { rebuildTaskProjection } from "@/lib/db/tasks";
 import { getErrorMessage } from "@/lib/errors";
 
+type RouteParams = Promise<{ id: string }>;
+
 /**
  * Reconstruye `tasks` para una Task puntual leyendo únicamente sus
  * eventos Tier A — demuestra que la proyección es prescindible, no una
  * fuente de verdad paralela (CONTEXT_BASE.md sección 24, regla 4).
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: RouteParams }) {
   try {
-    const task = await rebuildTaskProjection(params.id);
+    const { id } = await params;
+    const task = await rebuildTaskProjection(id);
     if (!task) {
       return NextResponse.json({ error: "No hay eventos TaskCreated para esa Task." }, { status: 404 });
     }
