@@ -1,0 +1,92 @@
+name: Next 15 security candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - security/next15-react19-candidate
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/security-next15-candidate.yml'
+      - 'app/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'next.config.js'
+      - 'tsconfig.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.2
+          cache: npm
+
+      - name: Generate Next 15 candidate lockfile
+        run: npm install --package-lock-only --ignore-scripts --save-exact next@15.5.24 react@19.3.0 react-dom@19.3.0 @types/react@19.3.0 @types/react-dom@19.3.0
+
+      - name: Install generated candidate lock
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Validate async dynamic route params
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const files = [
+            'app/api/knowledge/[id]/route.ts',
+            'app/api/sessions/[id]/route.ts',
+            'app/api/sessions/[id]/messages/route.ts',
+            'app/api/tasks/[id]/route.ts',
+            'app/api/tasks/[id]/rebuild/route.ts',
+            'app/api/openhands/jobs/[jobId]/events/route.ts',
+          ];
+          for (const file of files) {
+            const src = fs.readFileSync(file, 'utf8');
+            if (!src.includes('Promise<{')) throw new Error(`${file}: async params type missing`);
+            if (!src.includes('await params')) throw new Error(`${file}: params are not awaited`);
+            if (/params:\s*\{\s*(id|jobId):\s*string\s*\}/.test(src)) {
+              throw new Error(`${file}: synchronous params signature remains`);
+            }
+          }
+          console.log(`validated-route-files=${files.length}`);
+          NODE
+
+      - name: Production build
+        run: npm run build
+
+      - name: Dependency audit snapshot
+        run: npm audit --json > /tmp/npm-audit.json || true
+
+      - name: Summarize dependency audit
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          console.log(`audit-counts=${JSON.stringify(data.metadata?.vulnerabilities ?? {})}`);
+          for (const [name, finding] of Object.entries(data.vulnerabilities ?? {})) {
+            console.log(`${name}\tseverity=${finding.severity}\tdirect=${Boolean(finding.isDirect)}\tfix=${JSON.stringify(finding.fixAvailable)}`);
+          }
+          NODE
+
+      - name: Show resolved framework versions
+        run: npm ls next react react-dom @types/react @types/react-dom postcss nanoid @octokit/rest @supabase/supabase-js --depth=4 || true
+
+      - name: Upload generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: next15-candidate-package-lock
+          path: package-lock.json
+          if-no-files-found: error
