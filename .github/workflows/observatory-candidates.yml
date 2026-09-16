@@ -1,0 +1,44 @@
+name: Observatory candidate validation
+
+on:
+  push:
+    branches:
+      - chore/observatory-v1-repo-only-candidates
+    paths:
+      - 'lib/observatory/**'
+      - 'fixtures/observatory/**'
+      - 'scripts/validate-observatory-fixtures.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/observatory-candidates.yml'
+  pull_request:
+    paths:
+      - 'lib/observatory/**'
+      - 'fixtures/observatory/**'
+      - 'scripts/validate-observatory-fixtures.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/observatory-candidates.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-observatory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Observatory candidates
+        run: npm run validate:observatory
