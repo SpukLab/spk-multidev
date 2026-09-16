@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "validate:observatory": "tsc --strict --noEmit --skipLibCheck --module esnext --moduleResolution bundler --target ES2020 lib/observatory/contracts.ts lib/observatory/invariants.ts && node scripts/validate-observatory-fixtures.mjs"
+    "validate:observatory": "node scripts/validate-observatory.mjs"
   },
   "dependencies": {
     "next": "14.2.35",
@@ -20,6 +20,6 @@
     "typescript": "5.5.4",
     "@types/node": "20.14.15",
     "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0"
+    "@types/react-dom": "18.0.0"
   }
 }
