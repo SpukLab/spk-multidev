@@ -1,6 +1,7 @@
 name: Security dependency candidate
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - security/octokit-supabase-node20-candidate
