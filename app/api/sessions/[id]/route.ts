@@ -3,12 +3,15 @@ import { deleteSession } from "@/lib/db/sessions";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent } from "@/lib/events/emit";
 
+type RouteParams = Promise<{ id: string }>;
+
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: RouteParams }
 ) {
   try {
-    await deleteSession(params.id);
+    const { id } = await params;
+    await deleteSession(id);
     // Corrección de integridad (CONTEXT_BASE §26): se llamaba
     // ConversationArchived, pero deleteSession hace un DELETE físico, no un
     // archivado recuperable — "Archived" era una interpretación, no un
@@ -17,7 +20,7 @@ export async function DELETE(
       eventType: "ConversationDeleted",
       actor: "user",
       source: "user",
-      entityId: params.id,
+      entityId: id,
     });
     return NextResponse.json({ ok: true });
   } catch (err: unknown) {
