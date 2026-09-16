@@ -191,4 +191,5 @@ export interface ResearchFixture {
   relationships: RelationshipRecord[];
   transitions: TransitionRecord[];
   decision: EntityRecord;
+  lineage: ResearchContributionLineage[];
 }
