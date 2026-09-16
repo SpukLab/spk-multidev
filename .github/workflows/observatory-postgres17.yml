@@ -1,0 +1,54 @@
+name: Observatory PostgreSQL 17 disposable validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/observatory-postgres17-disposable
+    paths:
+      - 'supabase/migrations/**'
+      - 'supabase/candidates/observatory_v1_candidate.sql'
+      - 'fixtures/observatory/**'
+      - 'scripts/generate-observatory-postgres-fixtures.mjs'
+      - 'scripts/validate-observatory-postgres.sh'
+      - '.github/workflows/observatory-postgres17.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  postgres17-adapter-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v4
+
+      - name: Verify disposable environment
+        run: |
+          node --version
+          psql --version
+          pg_isready -h 127.0.0.1 -p 5432 -U postgres
+
+      - name: Validate recovered baseline and Observatory candidate on PostgreSQL 17
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: '5432'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+        run: bash scripts/validate-observatory-postgres.sh
