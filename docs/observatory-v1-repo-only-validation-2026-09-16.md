@@ -12,7 +12,7 @@ No production database operation was performed.
 
 ## Artifact scope
 
-Validated candidate scope contains only:
+Validated candidate scope now contains:
 
 - `supabase/candidates/observatory_v1_candidate.sql`
 - `lib/observatory/contracts.ts`
@@ -20,28 +20,30 @@ Validated candidate scope contains only:
 - `fixtures/observatory/repository-intelligence.json`
 - `fixtures/observatory/capability-acquisition-framework.json`
 - `fixtures/observatory/exp-2026-013.json`
+- `scripts/validate-observatory-fixtures.mjs`
+- `package.json` validation command
+- `.github/workflows/observatory-candidates.yml`
 
 The SQL file is deliberately outside `supabase/migrations/` and is not runtime-wired.
 
 ## TypeScript static validation
 
-The exact GitHub contents of `contracts.ts` and `invariants.ts` were reproduced in a local disposable directory and compiled with:
+Initial local disposable validation compiled the exact candidate contracts/invariants with strict TypeScript and produced zero errors.
+
+The repository now contains the reproducible command:
 
 ```text
-tsc --strict --noEmit --target ES2020 --module ESNext --moduleResolution Bundler
+npm run validate:observatory
 ```
 
-Compiler available in the execution environment: TypeScript 5.8.3.
+That command uses the repository-pinned TypeScript dependency and performs:
 
-Result: **PASS — zero TypeScript errors.**
-
-Repository `package.json` pins TypeScript 5.5.4. Because this environment has no network/package install path, the exact 5.5.4 compiler was not reinstalled. The candidate intentionally uses conservative TypeScript syntax compatible with the project's current strict configuration, but an exact-version build remains part of later repository/runtime validation.
+1. strict/noEmit compilation of `lib/observatory/contracts.ts` and `lib/observatory/invariants.ts`;
+2. zero-dependency fixture validation with Node.
 
 ## Pure invariant execution
 
-The same two TypeScript files were emitted to disposable CommonJS JavaScript and exercised directly in Node.
-
-Result: **10/10 checks PASS**.
+Initial direct Node execution produced **10/10 PASS** for the pure invariants.
 
 Checks covered:
 
@@ -58,17 +60,69 @@ Checks covered:
 
 These checks validate pure domain behavior only. They do not validate persistence.
 
+## Reproducible fixture validator
+
+`scripts/validate-observatory-fixtures.mjs` validates all three durable fixtures without introducing a test framework or new npm dependency.
+
+It checks, among other things:
+
+- unique record identity;
+- Research Run → Research Intent linkage;
+- Agent existence/version matching for Knowledge, Relationships, Transitions and lineage;
+- epistemic stage vocabulary and prohibition of self-promoted `canon` fixtures;
+- evidence references;
+- confidence range 0..1/null;
+- Research Decision next-action vocabulary;
+- explicit lineage;
+- Repository Intelligence immutable subject pinning;
+- CAF separation between capability knowledge and acquisition decision;
+- EXP-2026-013 exact FKC blob SHA, multiple auditor Agents, dependent lineage and a distinct-context candidate for independence review.
+
+A distinct-context pair is deliberately **not** declared independent by the validator; it is only eligible for later independence assessment because absence of known dependence is not proof of independence.
+
+## GitHub Actions validation
+
+A scoped workflow now runs only for Observatory candidate paths:
+
+`.github/workflows/observatory-candidates.yml`
+
+Security posture:
+
+- repository: public;
+- workflow permissions: `contents: read` only;
+- no secrets;
+- no Supabase credentials;
+- no production access;
+- no deployment step.
+
+Verified remote run:
+
+- workflow: `Observatory candidate validation`
+- run id: `35115074753`
+- triggering SHA: `c08b5ac68ba7e8596ff366135884a7e5a4ba1166`
+- event: `push`
+- result: **SUCCESS**
+
+Successful steps included:
+
+- Checkout
+- Setup Node 20
+- `npm ci`
+- `npm run validate:observatory`
+
+This confirms the validation command passes against the actual GitHub branch with the repository dependency lock, not only against reconstructed local files.
+
 ## Fixture review
 
-All three fixture artifacts are present and retrievable from the remote branch.
+All three fixture artifacts are durable on the remote branch.
 
 They exercise distinct research semantics:
 
 - Repository Intelligence: pinned external subject + evidence + reversible-pilot decision;
 - CAF: knowledge about a capability remains distinct from authority/decision to acquire it;
-- EXP-2026-013: exact FKC-000 blob identity, multiple versioned auditors, shared-context/dependent lineage, separately represented independent-context lineage, unresolved uncertainty, explicit Research Decision.
+- EXP-2026-013: exact FKC-000 blob identity, multiple versioned auditors, shared-context/dependent lineage, separately represented distinct-context lineage, unresolved uncertainty, explicit Research Decision.
 
-`ResearchFixture` now explicitly includes `lineage: ResearchContributionLineage[]`, matching the fixture payloads.
+`ResearchFixture` explicitly includes `lineage: ResearchContributionLineage[]`, matching the fixture payloads.
 
 Fixture persistence/reconstruction remains unvalidated until a disposable DB exists.
 
@@ -79,7 +133,7 @@ Fixture persistence/reconstruction remains unvalidated until a disposable DB exi
 - the eight-file recovered production migration baseline;
 - the live schema audit recorded in PR #3;
 - canonical primitive contracts from Governance Canon / Spk_Alchemy;
-- the new portable TypeScript contracts.
+- the portable TypeScript contracts.
 
 Result: **STATIC-ONLY CANDIDATE**.
 
@@ -106,4 +160,4 @@ The next database-dependent step remains blocked until a free disposable local P
 
 ## Verdict
 
-**Repo-only candidate block is internally coherent enough for review. Database implementation remains intentionally stopped.**
+**Repo-only candidate block now has reproducible remote validation and is suitable for review. Database implementation remains intentionally stopped.**
