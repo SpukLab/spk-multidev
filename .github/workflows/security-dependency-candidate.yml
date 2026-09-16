@@ -16,7 +16,7 @@ on:
       - 'tsconfig.json'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate-candidate:
@@ -32,10 +32,7 @@ jobs:
           node-version: 20.20.2
           cache: npm
 
-      - name: Generate candidate lockfile
-        run: npm install --package-lock-only --ignore-scripts --save-exact @octokit/rest@20.1.2 @supabase/supabase-js@2.109.0
-
-      - name: Install generated candidate lock
+      - name: Install committed candidate lock
         run: npm ci
 
       - name: Typecheck
@@ -60,22 +57,3 @@ jobs:
 
       - name: Show resolved candidate versions
         run: npm ls @octokit/rest @octokit/plugin-paginate-rest @supabase/supabase-js @supabase/auth-js next postcss nanoid --depth=4 || true
-
-      - name: Upload generated lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: candidate-package-lock
-          path: package-lock.json
-          if-no-files-found: error
-
-      - name: Commit validated lockfile when changed
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            echo 'package-lock.json already matches validated candidate'
-            exit 0
-          fi
-          git config user.name 'SpukLab Security Validation'
-          git config user.email 'spuklab@users.noreply.github.com'
-          git add package-lock.json
-          git commit -m 'chore(security): persist validated candidate lockfile'
-          git push
