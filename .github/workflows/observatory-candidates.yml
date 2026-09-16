@@ -1,6 +1,7 @@
 name: Observatory candidate validation
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - chore/observatory-v1-repo-only-candidates

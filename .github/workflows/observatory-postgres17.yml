@@ -52,6 +52,9 @@ jobs:
           node --version
           psql --version
           pg_isready -h 127.0.0.1 -p 5432 -U postgres
+          SERVER_VERSION="$(PGPASSWORD=postgres psql -h 127.0.0.1 -p 5432 -U postgres -d postgres -Atqc 'show server_version')"
+          echo "server-version=${SERVER_VERSION}"
+          [[ "${SERVER_VERSION}" == 17.* ]]
 
       - name: Validate recovered baseline and Observatory candidate on PostgreSQL 17
         env:
