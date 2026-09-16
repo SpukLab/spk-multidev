@@ -80,10 +80,11 @@ create index idx_transitions_subject on transitions(subject);
 create index idx_transitions_project on transitions(project_id);
 
 -- Existing physical Knowledge store: add canonical projection fields without
--- changing legacy curation/status/confidence semantics.
+-- changing legacy curation/status/confidence/type semantics.
 alter table knowledge_items
   add column subject_entity_id uuid references entities(id) on delete restrict,
   add column subject_relationship_id uuid references relationships(id) on delete restrict,
+  add column canonical_kind text,
   add column epistemic_stage text,
   add column canonical_payload jsonb,
   add column producer_agent_id uuid references agents(id) on delete restrict,
@@ -111,6 +112,8 @@ alter table knowledge_items
   add constraint knowledge_items_canonical_completeness_check
   check (
     epistemic_stage is null or (
+      canonical_kind is not null and
+      length(btrim(canonical_kind)) > 0 and
       canonical_payload is not null and
       producer_agent_id is not null and
       producer_agent_version is not null and
@@ -128,6 +131,7 @@ alter table knowledge_items
 
 create index idx_knowledge_subject_entity on knowledge_items(subject_entity_id);
 create index idx_knowledge_subject_relationship on knowledge_items(subject_relationship_id);
+create index idx_knowledge_canonical_kind on knowledge_items(canonical_kind);
 create index idx_knowledge_epistemic_stage on knowledge_items(epistemic_stage);
 create index idx_knowledge_producer_agent on knowledge_items(producer_agent_id);
 create index idx_knowledge_research_run on knowledge_items(research_run_id);
@@ -163,7 +167,7 @@ grant select, insert, update, delete on table transitions to service_role;
 
 -- Intentionally unchanged in this candidate:
 --   * existing public-read policies on events/tasks/knowledge_items
---   * legacy Knowledge status/confidence fields
+--   * legacy Knowledge status/confidence/type fields
 --   * Event actor/source fields
 --   * current UI/API behavior
 --
