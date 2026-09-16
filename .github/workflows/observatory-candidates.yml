@@ -42,5 +42,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Capture dependency audit snapshot
+        run: npm audit --json > /tmp/npm-audit.json || true
+
+      - name: Summarize dependency audit
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          const metadata = data.metadata?.vulnerabilities ?? {};
+          console.log(`audit-counts=${JSON.stringify(metadata)}`);
+          for (const [name, finding] of Object.entries(data.vulnerabilities ?? {})) {
+            console.log(`${name}\tseverity=${finding.severity}\tdirect=${Boolean(finding.isDirect)}\tfix=${JSON.stringify(finding.fixAvailable)}`);
+          }
+          NODE
+
       - name: Validate Observatory candidates
         run: npm run validate:observatory
