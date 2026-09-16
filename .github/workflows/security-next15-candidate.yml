@@ -16,7 +16,7 @@ on:
       - 'tsconfig.json'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   validate-candidate:
@@ -32,10 +32,7 @@ jobs:
           node-version: 20.20.2
           cache: npm
 
-      - name: Generate Next 15 candidate lockfile
-        run: npm install --package-lock-only --ignore-scripts --save-exact next@15.5.24 react@19.3.0 react-dom@19.3.0 @types/react@19.3.0 @types/react-dom@19.3.0
-
-      - name: Install generated candidate lock
+      - name: Install committed candidate lock
         run: npm ci
 
       - name: Typecheck
@@ -88,15 +85,3 @@ jobs:
 
       - name: Show resolved framework versions
         run: npm ls next react react-dom @types/react @types/react-dom postcss nanoid @octokit/rest @supabase/supabase-js --depth=4
-
-      - name: Commit validated lockfile when changed
-        run: |
-          if git diff --quiet -- package-lock.json; then
-            echo 'package-lock.json already matches validated candidate'
-            exit 0
-          fi
-          git config user.name 'SpukLab Security Validation'
-          git config user.email 'spuklab@users.noreply.github.com'
-          git add package-lock.json
-          git commit -m 'chore(security): persist validated Next 15 lockfile'
-          git push
