@@ -77,7 +77,8 @@ jobs:
           const data = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
           console.log(`audit-counts=${JSON.stringify(data.metadata?.vulnerabilities ?? {})}`);
           for (const [name, finding] of Object.entries(data.vulnerabilities ?? {})) {
-            console.log(`${name}\tseverity=${finding.severity}\tdirect=${Boolean(finding.isDirect)}\tfix=${JSON.stringify(finding.fixAvailable)}`);
+            console.log(`${name}\tseverity=${finding.severity}\tdirect=${Boolean(finding.isDirect)}\trange=${finding.range}\tfix=${JSON.stringify(finding.fixAvailable)}`);
+            console.log(`via=${JSON.stringify(finding.via)}`);
           }
           NODE
 
@@ -89,4 +90,11 @@ jobs:
         with:
           name: next15-candidate-package-lock
           path: package-lock.json
+          if-no-files-found: error
+
+      - name: Upload audit JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: next15-candidate-npm-audit
+          path: /tmp/npm-audit.json
           if-no-files-found: error
