@@ -4,6 +4,7 @@ import process from "node:process";
 
 const ROOT = process.cwd();
 const FIXTURE_DIR = path.join(ROOT, "fixtures", "observatory");
+const SQL_PATH = path.join(ROOT, "supabase", "candidates", "observatory_v1_candidate.sql");
 const FILES = [
   "repository-intelligence.json",
   "capability-acquisition-framework.json",
@@ -103,6 +104,11 @@ function validateCommon(filename, fixture) {
   for (const knowledge of fixture.knowledge ?? []) {
     assert(ALLOWED_STAGES.has(knowledge.stage), `${filename}: invalid epistemic stage ${knowledge.stage}`);
     assert(knowledge.stage !== "canon", `${filename}: fixture must not self-promote Knowledge to canon`);
+    assert(
+      knowledge.payload && typeof knowledge.payload === "object" && !Array.isArray(knowledge.payload),
+      `${filename}: Knowledge requires structured payload`
+    );
+    assert(Array.isArray(knowledge.evidence), `${filename}: Knowledge requires explicit evidence list`);
     assert(agents.has(knowledge.agentId), `${filename}: Knowledge references unknown Agent ${knowledge.agentId}`);
     assert(
       agents.get(knowledge.agentId).version === knowledge.agentVersion,
@@ -113,14 +119,15 @@ function validateCommon(filename, fixture) {
         (Number.isFinite(knowledge.confidence) && knowledge.confidence >= 0 && knowledge.confidence <= 1),
       `${filename}: Knowledge confidence must be null or 0..1`
     );
-    for (const evidenceId of knowledge.evidence ?? []) {
+    for (const evidenceId of knowledge.evidence) {
       assert(evidenceIds.has(evidenceId), `${filename}: Knowledge references unknown Evidence ${evidenceId}`);
     }
   }
 
   for (const relation of fixture.relationships ?? []) {
     assert(agents.has(relation.agentId), `${filename}: Relationship references unknown Agent ${relation.agentId}`);
-    for (const evidenceId of relation.evidence ?? []) {
+    assert(Array.isArray(relation.evidence), `${filename}: Relationship requires explicit evidence list`);
+    for (const evidenceId of relation.evidence) {
       assert(evidenceIds.has(evidenceId), `${filename}: Relationship references unknown Evidence ${evidenceId}`);
     }
     if (relation.type === "informs_decision") {
@@ -193,6 +200,62 @@ function validateExp013(fixture) {
   assert(distinctContextPairFound, "EXP-2026-013: fixture must contain a distinct-context lineage candidate for independence review");
 }
 
+function validateCandidateSql() {
+  const sql = fs.readFileSync(SQL_PATH, "utf8");
+  const requiredFragments = [
+    "DO NOT APPLY TO PRODUCTION",
+    "This SQL is a Supabase/PostgreSQL adapter representation",
+    "create table agents",
+    "create table entities",
+    "create table relationships",
+    "create table transitions",
+    "evidence_ids uuid[]",
+    "create index idx_relationships_source on relationships(source)",
+    "create index idx_relationships_target on relationships(target)",
+    "canonical_payload jsonb",
+    "producer_agent_version text",
+    "epistemic_confidence double precision",
+    "knowledge_items_canonical_completeness_check",
+    "revoke all on table agents from anon, authenticated",
+    "revoke all on table entities from anon, authenticated",
+    "revoke all on table relationships from anon, authenticated",
+    "revoke all on table transitions from anon, authenticated",
+    "grant select, insert, update, delete on table agents to service_role",
+  ];
+
+  for (const fragment of requiredFragments) {
+    assert(sql.includes(fragment), `candidate SQL missing required static contract: ${fragment}`);
+  }
+
+  assert(!sql.includes("alter publication supabase_realtime add table agents"), "candidate SQL must not silently add canonical tables to Realtime");
+}
+
+function walkFiles(dir) {
+  if (!fs.existsSync(dir)) return [];
+  const output = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) output.push(...walkFiles(full));
+    else output.push(full);
+  }
+  return output;
+}
+
+function validateNoRuntimeWiring() {
+  const roots = [path.join(ROOT, "app"), path.join(ROOT, "components")];
+  const codeFiles = roots
+    .flatMap(walkFiles)
+    .filter((file) => /\.(ts|tsx|js|jsx|mjs|cjs)$/.test(file));
+
+  for (const file of codeFiles) {
+    const content = fs.readFileSync(file, "utf8");
+    assert(
+      !content.includes("@/lib/observatory") && !content.includes("lib/observatory/"),
+      `runtime wiring detected before DB validation: ${path.relative(ROOT, file)}`
+    );
+  }
+}
+
 const loaded = FILES.map(loadFixture);
 for (const { filename, fixture } of loaded) {
   validateCommon(filename, fixture);
@@ -201,5 +264,7 @@ for (const { filename, fixture } of loaded) {
 validateRepositoryIntelligence(loaded[0].fixture);
 validateCaf(loaded[1].fixture);
 validateExp013(loaded[2].fixture);
+validateCandidateSql();
+validateNoRuntimeWiring();
 
-console.log(`Observatory fixture validation PASS (${loaded.length}/${FILES.length} fixtures)`);
+console.log(`Observatory fixture/static validation PASS (${loaded.length}/${FILES.length} fixtures)`);
