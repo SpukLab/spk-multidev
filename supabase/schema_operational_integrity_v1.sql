@@ -18,6 +18,8 @@ create index if not exists idx_work_item_session_links_work_item
   on work_item_session_links(work_item_id, linked_at);
 create index if not exists idx_work_item_session_links_session
   on work_item_session_links(session_id);
+create index if not exists idx_work_item_session_links_project
+  on work_item_session_links(project_id);
 
 create table if not exists control_definitions (
   id uuid primary key default gen_random_uuid(),
@@ -57,6 +59,12 @@ create index if not exists idx_control_runs_work_item
   on control_runs(work_item_id, executed_at desc);
 create index if not exists idx_control_runs_subject
   on control_runs(subject_kind, subject_id, subject_version);
+create index if not exists idx_control_runs_definition
+  on control_runs(control_definition_id);
+create index if not exists idx_control_runs_project
+  on control_runs(project_id);
+create index if not exists idx_control_runs_session
+  on control_runs(session_id);
 
 create table if not exists evidence_records (
   id uuid primary key default gen_random_uuid(),
@@ -99,6 +107,10 @@ create index if not exists idx_evidence_records_subject
   on evidence_records(subject_kind, subject_id, subject_version);
 create index if not exists idx_evidence_records_control_run
   on evidence_records(control_run_id);
+create index if not exists idx_evidence_records_project
+  on evidence_records(project_id);
+create index if not exists idx_evidence_records_session
+  on evidence_records(session_id);
 
 -- Server-side only in this first vertical slice.
 alter table work_item_session_links enable row level security;
