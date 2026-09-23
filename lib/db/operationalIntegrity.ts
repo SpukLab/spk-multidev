@@ -14,6 +14,28 @@ import {
 
 export class OperationalIntegrityError extends Error {}
 
+export async function getProjectRepository(projectId: string): Promise<{
+  owner: string;
+  repo: string;
+  defaultBranch: string;
+}> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("projects")
+    .select("github_owner, github_repo, default_branch")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) throw new OperationalIntegrityError(`Proyecto ${projectId} no existe.`);
+
+  return {
+    owner: data.github_owner as string,
+    repo: data.github_repo as string,
+    defaultBranch: data.default_branch as string,
+  };
+}
+
 async function assertWorkItemProject(workItemId: string, projectId: string) {
   const task = await getTask(workItemId);
   if (!task) throw new OperationalIntegrityError(`Work Item ${workItemId} no existe.`);
