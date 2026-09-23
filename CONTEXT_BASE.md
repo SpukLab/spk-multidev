@@ -1215,3 +1215,58 @@ La extensión sigue siendo **EXPERIMENTAL**. El código compilado no sustituye u
 prueba E2E con una Task activa real y dos Sessions creadas sucesivamente; esa
 evidencia sigue pendiente antes de usar este punto para promover ADR-010 a
 `ACTIVE`.
+
+
+### Extensión experimental — Evidence de Coverage y ausencia
+
+Se agrega una segunda primitive operacional para validar el límite:
+
+`NOT OBSERVED ≠ DID NOT OCCUR`
+
+Nueva ruta:
+
+`POST /api/operational-integrity/observations/github-path`
+
+El flujo obtiene desde GitHub un snapshot real del árbol del repo con:
+
+- branch;
+- HEAD SHA;
+- tree SHA;
+- paths;
+- flag `sourceTruncated` de GitHub.
+
+Después aplica una **ventana explícitamente acotada** `maxFiles`. El resultado
+no es booleano:
+
+- `observed`: el path fue observado dentro de la cobertura inspeccionada;
+- `not_observed`: el path no fue observado **y** la cobertura fue completa;
+- `partial`: el path no fue observado, pero la ventana o la propia respuesta
+  de GitHub no cubrió todo el espacio.
+
+La Evidence persiste:
+
+`subject = repo:branch`
+`subjectVersion = HEAD SHA`
+`verifier = github.git.getTree`
+`verifierRelation = external_authoritative`
+
+y un objeto `coverage` con:
+
+- `complete`;
+- `sourceTruncated`;
+- `observedCount`;
+- `returnedPathCount`;
+- `maxFiles`;
+- `requestedPath`.
+
+Esto evita una inferencia inválida como:
+
+`no apareció en los primeros 20 archivos → el archivo no existe`.
+
+Además se incorpora `recordEvidence()` como primitive separada de
+`recordControlRunWithEvidence()`: una observación puede constituir Evidence
+sin convertirse artificialmente en un control PASS/FAIL.
+
+Esta extensión sigue siendo **EXPERIMENTAL** hasta obtener evidencia sobre el
+SHA integrado de `main`, incluyendo al menos un caso real `partial` y un
+caso `not_observed` con `coverage.complete=true`.
