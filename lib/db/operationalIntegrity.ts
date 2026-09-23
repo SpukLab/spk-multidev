@@ -14,6 +14,10 @@ import {
 
 export class OperationalIntegrityError extends Error {}
 
+export class WorkItemSessionProjectionError extends OperationalIntegrityError {
+  readonly canonicalEventPersisted = true;
+}
+
 export async function getProjectRepository(projectId: string): Promise<{
   owner: string;
   repo: string;
@@ -72,7 +76,7 @@ export async function linkSessionToWorkItem(params: {
   projectId: string;
   workItemId: string;
   sessionId: string;
-  linkedBy?: string;
+  linkedBy?: "user" | "system";
 }): Promise<WorkItemSessionLink> {
   await assertWorkItemProject(params.workItemId, params.projectId);
   await assertSessionProject(params.sessionId, params.projectId);
@@ -88,40 +92,78 @@ export async function linkSessionToWorkItem(params: {
   if (existingError) throw existingError;
   if (existing) return existing as WorkItemSessionLink;
 
-  const now = new Date().toISOString();
-  const logged = await emitEvent({
-    eventType: "WorkItemSessionLinked",
-    actor: params.linkedBy === "system" ? "system" : "user",
-    source: params.linkedBy === "system" ? "System" : "user",
-    projectId: params.projectId,
-    entityId: params.workItemId,
-    timestamp: now,
-    payload: {
-      workItemId: params.workItemId,
-      sessionId: params.sessionId,
-      linkedBy: params.linkedBy ?? "user",
-    },
-  });
+  // Event Log is the source of truth. If a previous attempt persisted the
+  // canonical event but failed to materialize the projection, repair the
+  // projection without emitting a duplicate event.
+  const { data: priorEvent, error: priorEventError } = await supabase
+    .from("events")
+    .select("timestamp, payload")
+    .eq("project_id", params.projectId)
+    .eq("entity_id", params.workItemId)
+    .eq("event_type", "WorkItemSessionLinked")
+    .contains("payload", { sessionId: params.sessionId })
+    .order("timestamp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  if (!logged) {
-    throw new OperationalIntegrityError(
-      "No se pudo persistir WorkItemSessionLinked — la relación Work Item/Session NO se creó."
-    );
+  if (priorEventError) throw priorEventError;
+
+  let linkedAt: string;
+  let linkedBy: "user" | "system";
+
+  if (priorEvent) {
+    const payload = (priorEvent.payload ?? {}) as Record<string, unknown>;
+    linkedAt = priorEvent.timestamp as string;
+    linkedBy = payload.linkedBy === "system" ? "system" : "user";
+  } else {
+    linkedAt = new Date().toISOString();
+    linkedBy = params.linkedBy ?? "user";
+
+    const logged = await emitEvent({
+      eventType: "WorkItemSessionLinked",
+      actor: linkedBy === "system" ? "system" : "user",
+      source: linkedBy === "system" ? "System" : "user",
+      projectId: params.projectId,
+      entityId: params.workItemId,
+      timestamp: linkedAt,
+      payload: {
+        workItemId: params.workItemId,
+        sessionId: params.sessionId,
+        linkedBy,
+      },
+    });
+
+    if (!logged) {
+      throw new OperationalIntegrityError(
+        "No se pudo persistir WorkItemSessionLinked — la relación Work Item/Session NO se creó."
+      );
+    }
   }
 
   const { data, error } = await supabase
     .from("work_item_session_links")
-    .insert({
-      project_id: params.projectId,
-      work_item_id: params.workItemId,
-      session_id: params.sessionId,
-      linked_by: params.linkedBy ?? "user",
-      linked_at: now,
-    })
+    .upsert(
+      {
+        project_id: params.projectId,
+        work_item_id: params.workItemId,
+        session_id: params.sessionId,
+        linked_by: linkedBy,
+        linked_at: linkedAt,
+      },
+      { onConflict: "work_item_id,session_id" }
+    )
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    // El evento canónico ya existe en este punto. No podemos decir que la
+    // relación "no ocurrió"; sólo que su proyección materializada quedó
+    // pendiente de reconstrucción.
+    throw new WorkItemSessionProjectionError(
+      "WorkItemSessionLinked quedó durable en Event Log, pero falló su proyección materializada."
+    );
+  }
+
   return data as WorkItemSessionLink;
 }
 
