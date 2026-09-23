@@ -1178,3 +1178,34 @@ suficiente para promover ADR-010.
 El merge puede realizarse manteniendo ADR-012 como **EXPERIMENTAL**. Después
 del merge debe repetirse la validación de estado integrado sobre el SHA real de
 `main`; sólo esa nueva evidencia puede validar el estado resultante.
+
+
+### Extensión experimental — continuidad Work Item↔Session
+
+Sobre el vertical slice ADR-012 se agrega una conducta mínima de continuidad:
+
+- al crear una nueva Session mediante `POST /api/sessions`, el servidor consulta
+  la Task activa del proyecto;
+- si no hay Task activa, la Session se crea normalmente y responde
+  `workItemLink=not_applicable`;
+- si existe una Task activa, la nueva Session se vincula a ese mismo Work Item
+  mediante `WorkItemSessionLinked`;
+- si la Session ya fue creada pero la vinculación falla, la respuesta conserva
+  explícitamente `workItemLink=failed` y el error. No se afirma atomicidad ni
+  éxito total después de un efecto parcial ya ocurrido.
+
+Esto materializa la continuidad operativa:
+
+```
+Work Item A
+  ├─ Session 1
+  ├─ Session 2
+  └─ Session N
+```
+
+sin convertir ninguna Session individual en la identidad del trabajo.
+
+La extensión sigue siendo **EXPERIMENTAL**. El código compilado no sustituye una
+prueba E2E con una Task activa real y dos Sessions creadas sucesivamente; esa
+evidencia sigue pendiente antes de usar este punto para promover ADR-010 a
+`ACTIVE`.
