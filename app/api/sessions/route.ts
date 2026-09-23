@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, listSessionsWithPreview } from "@/lib/db/sessions";
+import { getActiveTask } from "@/lib/db/activeTaskContext";
+import { linkSessionToWorkItem } from "@/lib/db/operationalIntegrity";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent } from "@/lib/events/emit";
 
@@ -31,7 +33,39 @@ export async function POST(req: NextRequest) {
       projectId,
       entityId: session.id,
     });
-    return NextResponse.json({ session });
+
+    // ADR-010 / ADR-012:
+    // Work Item != Session. Si existe una Task activa, una Session nueva se
+    // vincula explícitamente a ese Work Item para preservar continuidad sin
+    // convertir el chat en la fuente de verdad del trabajo.
+    const activeTask = await getActiveTask(projectId);
+    let integrity:
+      | { workItemId: string | null; workItemLink: "linked" | "not_applicable" }
+      | { workItemId: string; workItemLink: "failed"; error: string };
+
+    if (!activeTask) {
+      integrity = { workItemId: null, workItemLink: "not_applicable" };
+    } else {
+      try {
+        await linkSessionToWorkItem({
+          projectId,
+          workItemId: activeTask.id,
+          sessionId: session.id,
+          linkedBy: "system",
+        });
+        integrity = { workItemId: activeTask.id, workItemLink: "linked" };
+      } catch (linkErr: unknown) {
+        // La Session ya existe: no fingimos atomicidad retroactiva. Devolvemos
+        // el hecho parcial explícitamente en vez de ocultarlo como success total.
+        integrity = {
+          workItemId: activeTask.id,
+          workItemLink: "failed",
+          error: getErrorMessage(linkErr),
+        };
+      }
+    }
+
+    return NextResponse.json({ session, integrity });
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });
