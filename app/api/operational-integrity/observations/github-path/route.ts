@@ -7,6 +7,7 @@ import {
 import { getRepoTreeSnapshot } from "@/lib/github/client";
 import { getErrorMessage } from "@/lib/errors";
 import { EvidenceResult } from "@/lib/operationalIntegrity/contracts";
+import { classifyGitHubVerifierIntegrity } from "@/lib/operationalIntegrity/verifierIntegrity";
 
 const DEFAULT_MAX_FILES = 250;
 const MAX_MAX_FILES = 5000;
@@ -78,6 +79,8 @@ export async function POST(req: NextRequest) {
       maxFiles: boundedMaxFiles,
     };
 
+    const subjectRepo = `${projectRepo.owner}/${projectRepo.repo}`;
+    const verifierIntegrity = classifyGitHubVerifierIntegrity(subjectRepo);
     const artifactRef =
       `https://github.com/${projectRepo.owner}/${projectRepo.repo}/tree/${snapshot.headSha}`;
 
@@ -91,21 +94,26 @@ export async function POST(req: NextRequest) {
       subjectVersion: snapshot.headSha,
       source: "GitHub",
       environment: {
-        repository: `${projectRepo.owner}/${projectRepo.repo}`,
+        repository: subjectRepo,
         branch: snapshot.branch,
         treeSha: snapshot.treeSha,
+        verifierImplementationRepo: verifierIntegrity.implementationRepo,
+        verifierImplementationSha: verifierIntegrity.implementationSha,
       },
       configuration: {
         requestedPath,
         maxFiles: boundedMaxFiles,
       },
       verifier: "github.git.getTree",
-      verifierRelation: "external_authoritative",
+      verifierRelation: verifierIntegrity.relation,
       result,
       artifactRef,
       coverage,
       payload: {
         pathObserved: found,
+        sourceAuthority: verifierIntegrity.sourceAuthority,
+        verifierImplementationRepo: verifierIntegrity.implementationRepo,
+        verifierImplementationSha: verifierIntegrity.implementationSha,
       },
     });
 
@@ -113,6 +121,7 @@ export async function POST(req: NextRequest) {
       result,
       pathObserved: found,
       subjectVersion: snapshot.headSha,
+      verifierIntegrity,
       coverage,
       evidence,
     });
