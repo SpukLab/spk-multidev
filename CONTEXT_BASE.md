@@ -1356,14 +1356,21 @@ Se agrega `classifyGitHubVerifierIntegrity()`, que conserva por separado:
 
 Reglas de v1:
 
-- si no conocemos el SHA de la implementación → `verifierRelation=unknown`;
-- si el repo evaluado es `SpukLab/spk-multidev` → `shared_control`;
-- si el verifier vive en `spk-multidev` y el sujeto es otro repo →
-  `independent`.
+- si el repo evaluado es `SpukLab/spk-multidev` → `shared_control`,
+  incluso cuando el SHA de implementación no esté disponible;
+- si el sujeto es otro repo → `unknown` salvo que exista evidencia externa
+  adicional de una frontera de confianza realmente independiente;
+- la presencia/ausencia del SHA de implementación se conserva aparte como
+  `implementationVersionObserved`.
 
-Por lo tanto, las evidencias iniciales que etiquetaban el control sobre
+**Corrección adicional del stress test:** repositorio distinto **no** implica
+verificador independiente. Dos repos pueden compartir owner, credenciales,
+runtime, deployment, agente o capacidad de modificación. Por eso v1 ya no
+promueve automáticamente `different repo → independent`.
+
+Las evidencias iniciales que etiquetaban el control sobre
 `spk-multidev` como `external_authoritative` siguen siendo evidencia válida
-de **qué SHA devolvió GitHub**, pero esa etiqueta ya no se considera prueba de
+de **qué SHA devolvió GitHub**, pero esa etiqueta no constituye prueba de
 independencia del verificador. Queda explícitamente corregida por esta versión.
 
 Los controles `github.branch-head.matches` y
