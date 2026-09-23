@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createSession, listSessionsWithPreview } from "@/lib/db/sessions";
 import { getActiveTask } from "@/lib/db/activeTaskContext";
-import { linkSessionToWorkItem } from "@/lib/db/operationalIntegrity";
+import {
+  linkSessionToWorkItem,
+  WorkItemSessionProjectionError,
+} from "@/lib/db/operationalIntegrity";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent } from "@/lib/events/emit";
 
@@ -41,7 +44,11 @@ export async function POST(req: NextRequest) {
     const activeTask = await getActiveTask(projectId);
     let integrity:
       | { workItemId: string | null; workItemLink: "linked" | "not_applicable" }
-      | { workItemId: string; workItemLink: "failed"; error: string };
+      | {
+          workItemId: string;
+          workItemLink: "recorded_projection_failed" | "failed";
+          error: string;
+        };
 
     if (!activeTask) {
       integrity = { workItemId: null, workItemLink: "not_applicable" };
@@ -55,11 +62,15 @@ export async function POST(req: NextRequest) {
         });
         integrity = { workItemId: activeTask.id, workItemLink: "linked" };
       } catch (linkErr: unknown) {
-        // La Session ya existe: no fingimos atomicidad retroactiva. Devolvemos
-        // el hecho parcial explícitamente en vez de ocultarlo como success total.
+        // La Session ya existe: no fingimos atomicidad retroactiva.
+        // Si el evento Tier A quedó durable, distinguimos "relación canónica
+        // registrada / proyección fallida" de un fallo anterior al evento.
         integrity = {
           workItemId: activeTask.id,
-          workItemLink: "failed",
+          workItemLink:
+            linkErr instanceof WorkItemSessionProjectionError
+              ? "recorded_projection_failed"
+              : "failed",
           error: getErrorMessage(linkErr),
         };
       }
