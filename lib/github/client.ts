@@ -155,6 +155,28 @@ async function getDefaultBranch(ref: RepoRef, token?: string): Promise<string> {
 }
 
 /**
+ * Lee el HEAD real de una rama desde GitHub.
+ *
+ * Se usa como verificador externo para controles deterministas: el caller
+ * no aporta el SHA observado, solo el esperado. El SHA real se obtiene de
+ * GitHub en el momento de ejecución y queda ligado a la evidencia.
+ */
+export async function getBranchHeadSha(
+  ref: RepoRef,
+  token?: string
+): Promise<{ branch: string; sha: string }> {
+  const octokit = getOctokit(token);
+  const branch = ref.branch ?? (await getDefaultBranch(ref, token));
+  const { data } = await octokit.git.getRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+  });
+
+  return { branch, sha: data.object.sha };
+}
+
+/**
  * Lista todos los archivos del repo (recursivo) — usado por el Nivel 1 de
  * limpieza masiva (sección 15): borrado de archivos sueltos dentro de un repo.
  */
