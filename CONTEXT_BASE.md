@@ -1147,3 +1147,34 @@ El slice se considera técnicamente integrado cuando:
 
 Hasta completar estos puntos, el slice es **EXPERIMENTAL**, no evidencia
 suficiente para promover ADR-010.
+
+### Evidencia de validación pre-merge — 2026-09-22/23
+
+- **Build integrado del branch:** Vercel marcó `Ready` el Preview Deployment
+  construido sobre SHA exacto
+  `64199ab52a7378b94b6b9079e712e10448855f1f`. Esto demuestra que el
+  proyecto completo compila/despliega sobre ese estado; no se extrapola a un
+  SHA posterior.
+- **Persistencia:** migraciones Supabase
+  `operational_integrity_v1` y
+  `operational_integrity_v1_covering_indexes` aplicadas correctamente al
+  proyecto `Spk_Multidev`.
+- **Advisor post-migración:** los nuevos foreign keys quedaron cubiertos por
+  índices. El aviso de seguridad sobre RLS sin policy para las cuatro tablas
+  nuevas es intencional: v1 es server-side-only y deny-by-default.
+- **Stress transaccional real contra Postgres:** usando un fixture temporal con
+  rollback se materializó 1 vínculo Work Item↔Session, 2 `control_runs`
+  (PASS + FAIL deliberado) y 2 `evidence_records`. Ambas evidencias quedaron
+  ligadas al SHA observado exacto
+  `64199ab52a7378b94b6b9079e712e10448855f1f` y conservaron
+  `verifier_relation=external_authoritative`. El rollback dejó 0 fixtures
+  residuales.
+- **Límite de evidencia:** el entorno de auditoría no puede alcanzar el Preview
+  Vercel por HTTP, por lo que todavía no se afirma un E2E remoto de las rutas
+  POST. El deployment confirma build/integración del código; la prueba
+  transaccional confirma el contrato de persistencia. Esta limitación queda
+  explícita en vez de convertir cobertura parcial en cobertura completa.
+
+El merge puede realizarse manteniendo ADR-012 como **EXPERIMENTAL**. Después
+del merge debe repetirse la validación de estado integrado sobre el SHA real de
+`main`; sólo esa nueva evidencia puede validar el estado resultante.
