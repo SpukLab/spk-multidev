@@ -227,6 +227,9 @@ export async function recordControlRunWithEvidence(params: {
 
   // Evidence is a separate fact. If this insert fails we preserve the run and
   // report evidencePersisted=false instead of pretending the evidence exists.
+  const evidenceResult: EvidenceResult =
+    params.evidenceResult ?? (params.outcome === "error" ? "unknown" : params.outcome);
+
   const { data: evidenceData, error: evidenceError } = await supabase
     .from("evidence_records")
     .insert({
@@ -244,7 +247,7 @@ export async function recordControlRunWithEvidence(params: {
       configuration,
       verifier: params.verifier,
       verifier_relation: params.verifierRelation,
-      result: params.evidenceResult ?? params.outcome,
+      result: evidenceResult,
       artifact_ref: params.artifactRef ?? null,
       coverage: params.coverage ?? null,
       payload: params.evidencePayload ?? {},
