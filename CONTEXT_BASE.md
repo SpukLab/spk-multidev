@@ -1270,3 +1270,67 @@ sin convertirse artificialmente en un control PASS/FAIL.
 Esta extensión sigue siendo **EXPERIMENTAL** hasta obtener evidencia sobre el
 SHA integrado de `main`, incluyendo al menos un caso real `partial` y un
 caso `not_observed` con `coverage.complete=true`.
+
+
+### Extensión experimental — conflicto explícito de autoridad
+
+Se agrega un piloto mínimo para preservar el límite:
+
+`CAPABILITY ≠ PERMISSION ≠ AUTHORITY`
+
+y, en particular:
+
+`CONFLICTING AUTHORITY ≠ IMPLICIT RESOLUTION`
+
+Persistencia nueva:
+
+`permission_directives`
+
+Cada directive conserva:
+
+- `issuer`;
+- `grantee`;
+- `action`;
+- `resource_scope`;
+- `decision = allow | deny`;
+- `conditions`;
+- `precedence` opcional;
+- `valid_from`;
+- `expires_at`;
+- `revoked_at`.
+
+El evaluator determinista
+`evaluate_permission_directives(project, grantee, action, resource_scope, at)`
+opera solamente sobre coincidencia exacta de scope y directives activas.
+
+Estados posibles:
+
+- `unknown`: no existe directive activa aplicable;
+- `allow`: sólo existen directives activas ALLOW;
+- `deny`: sólo existen directives activas DENY;
+- `authority_conflict`: existen simultáneamente ALLOW y DENY.
+
+**Decisión deliberada de v1:** aunque `precedence` puede persistirse para no
+perder información, el evaluator **no la utiliza para resolver conflictos**.
+Todavía no existe un modelo ratificado que permita afirmar que un número de
+precedencia representa autoridad legítima. Resolverlo automáticamente sería
+inventar una jerarquía no autorizada.
+
+La función SQL es el mecanismo determinista. La ruta read-only
+`POST /api/operational-integrity/authority/evaluate` sólo expone el resultado
+y declara `exactScope=true` / `precedenceApplied=false`.
+
+No se expone todavía una API pública para crear directives. Modificar autoridad
+es una transición de gobernanza y queda fuera de este slice hasta definir su
+gate legítimo.
+
+El experimento debe demostrar al menos:
+
+1. cero directives → `unknown`;
+2. sólo ALLOW → `allow`;
+3. sólo DENY → `deny`;
+4. ALLOW + DENY simultáneos → `authority_conflict`;
+5. un DENY revocado deja de participar;
+6. valores de `precedence` contradictorios no borran el conflicto en v1.
+
+Hasta entonces esta pieza permanece **EXPERIMENTAL**.
