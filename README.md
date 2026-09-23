@@ -28,6 +28,11 @@ Ver `CONTEXT_BASE.md` sección 20 para la arquitectura completa. Requiere:
 3. Cargar `OPENHANDS_BASE_URL`, `OPENHANDS_API_KEY`,
    `OPENHANDS_WEBHOOK_SECRET` y `NEXT_PUBLIC_SUPABASE_ANON_KEY` en Vercel.
 
+Experimental: vertical slice de integridad operacional (ADR-012) con vínculo
+Work Item↔Session, Evidence ligada a sujeto/versión/verificador y primer
+control determinista `github.branch-head.matches`. Ver
+`supabase/schema_operational_integrity_v1.sql` y `CONTEXT_BASE.md` §32.
+
 Pendiente: selector de proyecto/repo con UI más rica (hoy son inputs de
 texto planos).
 
