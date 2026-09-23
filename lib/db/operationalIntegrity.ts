@@ -203,6 +203,61 @@ export async function ensureControlDefinition(params: {
   return data as ControlDefinition;
 }
 
+export async function recordEvidence(params: {
+  projectId: string;
+  workItemId?: string | null;
+  sessionId?: string | null;
+  controlRunId?: string | null;
+  claim: string;
+  subjectKind: string;
+  subjectId: string;
+  subjectVersion?: string | null;
+  source: string;
+  observedAt?: string;
+  environment?: Record<string, unknown>;
+  configuration?: Record<string, unknown>;
+  verifier: string;
+  verifierRelation: VerifierRelation;
+  result: EvidenceResult;
+  artifactRef?: string | null;
+  coverage?: Record<string, unknown> | null;
+  payload?: Record<string, unknown>;
+}): Promise<EvidenceRecord> {
+  if (params.workItemId) await assertWorkItemProject(params.workItemId, params.projectId);
+  if (params.sessionId) await assertSessionProject(params.sessionId, params.projectId);
+
+  const supabase = getSupabaseServerClient();
+  const observedAt = params.observedAt ?? new Date().toISOString();
+
+  const { data, error } = await supabase
+    .from("evidence_records")
+    .insert({
+      project_id: params.projectId,
+      work_item_id: params.workItemId ?? null,
+      session_id: params.sessionId ?? null,
+      control_run_id: params.controlRunId ?? null,
+      claim: params.claim,
+      subject_kind: params.subjectKind,
+      subject_id: params.subjectId,
+      subject_version: params.subjectVersion ?? null,
+      source: params.source,
+      observed_at: observedAt,
+      environment: params.environment ?? {},
+      configuration: params.configuration ?? {},
+      verifier: params.verifier,
+      verifier_relation: params.verifierRelation,
+      result: params.result,
+      artifact_ref: params.artifactRef ?? null,
+      coverage: params.coverage ?? null,
+      payload: params.payload ?? {},
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as EvidenceRecord;
+}
+
 export async function recordControlRunWithEvidence(params: {
   control: ControlDefinition;
   projectId: string;

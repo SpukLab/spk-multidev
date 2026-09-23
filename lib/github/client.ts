@@ -202,6 +202,63 @@ export async function listRepoTree(ref: RepoRef, token?: string): Promise<string
     .map((item) => item.path as string);
 }
 
+
+export interface RepoTreeSnapshot {
+  branch: string;
+  headSha: string;
+  treeSha: string;
+  sourceTruncated: boolean;
+  paths: string[];
+}
+
+/**
+ * Snapshot auditable del árbol real de una rama.
+ *
+ * A diferencia de listRepoTree(), conserva identidad del HEAD y el flag
+ * `truncated` de GitHub. Ese dato es necesario para no convertir cobertura
+ * parcial en una afirmación de ausencia completa.
+ */
+export async function getRepoTreeSnapshot(
+  ref: RepoRef,
+  token?: string
+): Promise<RepoTreeSnapshot> {
+  const octokit = getOctokit(token);
+  const branch = ref.branch ?? (await getDefaultBranch(ref, token));
+
+  const { data: refData } = await octokit.git.getRef({
+    owner: ref.owner,
+    repo: ref.repo,
+    ref: `heads/${branch}`,
+  });
+  const headSha = refData.object.sha;
+
+  const { data: commit } = await octokit.git.getCommit({
+    owner: ref.owner,
+    repo: ref.repo,
+    commit_sha: headSha,
+  });
+
+  const { data: tree } = await octokit.git.getTree({
+    owner: ref.owner,
+    repo: ref.repo,
+    tree_sha: commit.tree.sha,
+    recursive: "true",
+  });
+
+  const paths = (tree.tree ?? [])
+    .filter((item) => item.type === "blob" && item.path)
+    .map((item) => item.path as string)
+    .sort((a, b) => a.localeCompare(b));
+
+  return {
+    branch,
+    headSha,
+    treeSha: commit.tree.sha,
+    sourceTruncated: Boolean(tree.truncated),
+    paths,
+  };
+}
+
 export interface RepoSummary {
   owner: string;
   name: string;
