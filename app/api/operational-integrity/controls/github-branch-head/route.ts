@@ -7,6 +7,7 @@ import {
 } from "@/lib/db/operationalIntegrity";
 import { getBranchHeadSha } from "@/lib/github/client";
 import { getErrorMessage } from "@/lib/errors";
+import { classifyGitHubVerifierIntegrity } from "@/lib/operationalIntegrity/verifierIntegrity";
 
 const CONTROL_KEY = "github.branch-head.matches";
 
@@ -53,6 +54,8 @@ export async function POST(req: NextRequest) {
     });
 
     const passed = observed.sha === expectedSha.trim();
+    const subjectRepo = `${projectRepo.owner}/${projectRepo.repo}`;
+    const verifierIntegrity = classifyGitHubVerifierIntegrity(subjectRepo);
     const artifactRef =
       `https://github.com/${projectRepo.owner}/${projectRepo.repo}/commit/${observed.sha}`;
 
@@ -67,8 +70,10 @@ export async function POST(req: NextRequest) {
       outcome: passed ? "pass" : "fail",
       executor: "system:github-branch-head-control",
       environment: {
-        repository: `${projectRepo.owner}/${projectRepo.repo}`,
+        repository: subjectRepo,
         branch: observed.branch,
+        verifierImplementationRepo: verifierIntegrity.implementationRepo,
+        verifierImplementationSha: verifierIntegrity.implementationSha,
       },
       configuration: {
         expectedSha: expectedSha.trim(),
@@ -77,10 +82,13 @@ export async function POST(req: NextRequest) {
       claim: "GitHub branch head matches expected SHA",
       source: "GitHub",
       verifier: "github.git.getRef",
-      verifierRelation: "external_authoritative",
+      verifierRelation: verifierIntegrity.relation,
       evidencePayload: {
         expectedSha: expectedSha.trim(),
         actualSha: observed.sha,
+        sourceAuthority: verifierIntegrity.sourceAuthority,
+        verifierImplementationRepo: verifierIntegrity.implementationRepo,
+        verifierImplementationSha: verifierIntegrity.implementationSha,
       },
       coverage: {
         scope: "single_branch_head",
@@ -95,6 +103,7 @@ export async function POST(req: NextRequest) {
       evidencePersisted: recorded.evidencePersisted,
       expectedSha: expectedSha.trim(),
       actualSha: observed.sha,
+      verifierIntegrity,
       run: recorded.run,
       evidence: recorded.evidence,
     });
