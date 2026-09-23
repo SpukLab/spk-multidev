@@ -1190,9 +1190,15 @@ Sobre el vertical slice ADR-012 se agrega una conducta mínima de continuidad:
   `workItemLink=not_applicable`;
 - si existe una Task activa, la nueva Session se vincula a ese mismo Work Item
   mediante `WorkItemSessionLinked`;
-- si la Session ya fue creada pero la vinculación falla, la respuesta conserva
-  explícitamente `workItemLink=failed` y el error. No se afirma atomicidad ni
-  éxito total después de un efecto parcial ya ocurrido.
+- si la Session ya fue creada pero la vinculación falla **antes** de persistir
+  el evento Tier A, la respuesta conserva `workItemLink=failed`;
+- si `WorkItemSessionLinked` ya quedó durable pero falla sólo la proyección,
+  la respuesta usa `workItemLink=recorded_projection_failed`: el hecho canónico
+  ocurrió y queda pendiente reconstruir su proyección;
+- un retry busca primero un evento canónico previo para esa pareja
+  Work Item/Session y reconstruye la proyección sin emitir un evento duplicado.
+  No se afirma atomicidad retroactiva ni se colapsa "evento durable" con
+  "proyección actualizada".
 
 Esto materializa la continuidad operativa:
 
