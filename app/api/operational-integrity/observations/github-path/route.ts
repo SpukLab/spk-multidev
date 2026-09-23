@@ -99,6 +99,8 @@ export async function POST(req: NextRequest) {
         treeSha: snapshot.treeSha,
         verifierImplementationRepo: verifierIntegrity.implementationRepo,
         verifierImplementationSha: verifierIntegrity.implementationSha,
+        verifierImplementationVersionObserved:
+          verifierIntegrity.implementationVersionObserved,
       },
       configuration: {
         requestedPath,
@@ -114,6 +116,8 @@ export async function POST(req: NextRequest) {
         sourceAuthority: verifierIntegrity.sourceAuthority,
         verifierImplementationRepo: verifierIntegrity.implementationRepo,
         verifierImplementationSha: verifierIntegrity.implementationSha,
+        verifierImplementationVersionObserved:
+          verifierIntegrity.implementationVersionObserved,
       },
     });
 

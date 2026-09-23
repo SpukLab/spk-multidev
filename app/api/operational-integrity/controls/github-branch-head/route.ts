@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
         branch: observed.branch,
         verifierImplementationRepo: verifierIntegrity.implementationRepo,
         verifierImplementationSha: verifierIntegrity.implementationSha,
+        verifierImplementationVersionObserved:
+          verifierIntegrity.implementationVersionObserved,
       },
       configuration: {
         expectedSha: expectedSha.trim(),
@@ -89,6 +91,8 @@ export async function POST(req: NextRequest) {
         sourceAuthority: verifierIntegrity.sourceAuthority,
         verifierImplementationRepo: verifierIntegrity.implementationRepo,
         verifierImplementationSha: verifierIntegrity.implementationSha,
+        verifierImplementationVersionObserved:
+          verifierIntegrity.implementationVersionObserved,
       },
       coverage: {
         scope: "single_branch_head",

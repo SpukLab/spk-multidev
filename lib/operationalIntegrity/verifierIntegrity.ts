@@ -5,16 +5,21 @@ const IMPLEMENTATION_REPO = "SpukLab/spk-multidev";
 export interface VerifierIntegrityContext {
   implementationRepo: string;
   implementationSha: string | null;
+  implementationVersionObserved: boolean;
   relation: VerifierRelation;
   sourceAuthority: "external_authoritative";
 }
 
 /**
- * Classifies the relationship between the subject under evaluation and the
- * code implementing the verifier.
+ * Classifies only what is mechanically supportable about the relationship
+ * between the subject and the verifier implementation.
  *
- * GitHub remains authoritative for the observed Git state, but that does not
- * automatically make the verifier implementation independent.
+ * GitHub remains authoritative for the observed Git state, but repository
+ * separation alone does NOT prove verifier independence. Two repositories can
+ * still share the same owner, credentials, runtime, deployment controls, or
+ * agent. Therefore v1 only asserts shared_control when self-verifying and
+ * otherwise leaves independence unknown until an external trust boundary is
+ * explicitly evidenced.
  */
 export function classifyGitHubVerifierIntegrity(subjectRepo: string): VerifierIntegrityContext {
   const implementationSha =
@@ -23,18 +28,17 @@ export function classifyGitHubVerifierIntegrity(subjectRepo: string): VerifierIn
     process.env.GIT_COMMIT_SHA ??
     null;
 
-  let relation: VerifierRelation;
-  if (!implementationSha) {
-    relation = "unknown";
-  } else if (subjectRepo.toLowerCase() === IMPLEMENTATION_REPO.toLowerCase()) {
-    relation = "shared_control";
-  } else {
-    relation = "independent";
-  }
+  const sameRepository =
+    subjectRepo.toLowerCase() === IMPLEMENTATION_REPO.toLowerCase();
+
+  const relation: VerifierRelation = sameRepository
+    ? "shared_control"
+    : "unknown";
 
   return {
     implementationRepo: IMPLEMENTATION_REPO,
     implementationSha,
+    implementationVersionObserved: implementationSha !== null,
     relation,
     sourceAuthority: "external_authoritative",
   };
