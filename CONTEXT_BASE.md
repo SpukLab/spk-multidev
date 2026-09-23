@@ -1334,3 +1334,48 @@ El experimento debe demostrar al menos:
 6. valores de `precedence` contradictorios no borran el conflicto en v1.
 
 Hasta entonces esta pieza permanece **EXPERIMENTAL**.
+
+
+### Extensión experimental — integridad del verificador
+
+El stress adversarial reveló una corrección necesaria al primer slice:
+
+`AUTHORITATIVE SOURCE ≠ INDEPENDENT VERIFIER`
+
+GitHub puede ser la fuente autoritativa del HEAD o del tree observado, pero el
+código que interpreta esa respuesta puede vivir dentro del mismo repositorio
+que está siendo evaluado. En ese caso la Evidence **no** debe marcarse como si
+el verificador fuera externo e independiente.
+
+Se agrega `classifyGitHubVerifierIntegrity()`, que conserva por separado:
+
+- `sourceAuthority = external_authoritative` para el estado leído desde GitHub;
+- `implementationRepo = SpukLab/spk-multidev`;
+- `implementationSha = VERCEL_GIT_COMMIT_SHA | GITHUB_SHA | GIT_COMMIT_SHA`;
+- `verifierRelation`.
+
+Reglas de v1:
+
+- si no conocemos el SHA de la implementación → `verifierRelation=unknown`;
+- si el repo evaluado es `SpukLab/spk-multidev` → `shared_control`;
+- si el verifier vive en `spk-multidev` y el sujeto es otro repo →
+  `independent`.
+
+Por lo tanto, las evidencias iniciales que etiquetaban el control sobre
+`spk-multidev` como `external_authoritative` siguen siendo evidencia válida
+de **qué SHA devolvió GitHub**, pero esa etiqueta ya no se considera prueba de
+independencia del verificador. Queda explícitamente corregida por esta versión.
+
+Los controles `github.branch-head.matches` y
+`github-path observation` ahora persisten el repo/SHA de la implementación
+del verifier junto al sujeto observado. Esto permite distinguir:
+
+`source trusted`
+de
+`verifier independent`.
+
+Esta corrección implementa directamente el límite:
+
+`EVIDENCE ≠ TRUSTED EVIDENCE`
+
+sin invalidar la procedencia factual ya capturada.
