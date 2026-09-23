@@ -1030,3 +1030,120 @@ de cada iteración.
   disparado por un commit del hub (hoy hay que ir a chequear a mano).
 - Roles personalizados sincronizados vía Supabase en vez de solo localStorage
   (para que viajen entre iPad y PC, igual que el historial de chat).
+
+
+## 32. ADR-012 — Operational Integrity Vertical Slice v1 — EXPERIMENTAL
+
+**Origen:** implementación experimental de los límites formalizados en
+`SpukLab/spuklab-canon` por FKC-000 v0.3 y ADR-010 (Agentic Operational
+Integrity and Evidence Boundaries). Este sprint no importa ECC ni ningún
+runtime externo: adopta únicamente las distinciones que sobrevivieron al
+stress test adversarial.
+
+### Alcance deliberadamente mínimo
+
+Este vertical slice materializa tres cuestiones y nada más:
+
+1. **Work Item ≠ Session.** La `Task` existente es el Work Item del piloto.
+   Se agrega una relación explícita `work_item_session_links`; una Task puede
+   atravesar varias Sessions sin cambiar de identidad. No se crea una entidad
+   Work Item paralela.
+2. **Evidence binding.** `evidence_records` liga una afirmación al sujeto,
+   versión/estado, fuente, tiempo, environment/configuration, verifier,
+   artifact y coverage cuando aplica.
+3. **CONTROL DEFINED ≠ CONTROL EXECUTED ≠ CONTROL PASSED.**
+   `control_definitions` representa que un control existe;
+   `control_runs` demuestra que se ejecutó y conserva su outcome.
+
+### Primer control determinista real
+
+El primer control implementado es `github.branch-head.matches`.
+
+Input autorizado:
+- `projectId`;
+- SHA esperado;
+- branch opcional (si falta usa `projects.default_branch`);
+- Work Item / Session opcionales para procedencia.
+
+El caller **no aporta el SHA observado**. El servidor obtiene el HEAD real
+mediante GitHub `git.getRef` y compara igualdad exacta. El resultado se
+persiste como `control_run` y además intenta persistir Evidence ligada a:
+
+- repository + branch;
+- SHA real observado;
+- SHA esperado;
+- instante de ejecución;
+- verifier `github.git.getRef`;
+- relación del verifier `external_authoritative`;
+- artifact al commit observado;
+- coverage `single_branch_head / complete=true`.
+
+La respuesta expone explícitamente:
+
+```
+controlDefined
+controlExecuted
+controlPassed
+evidencePersisted
+expectedSha
+actualSha
+```
+
+Por diseño, `evidencePersisted=false` **no borra ni oculta un Control Run ya
+persistido**. Ese estado demuestra precisamente la distinción entre "el control
+corrió" y "la evidencia secundaria quedó durable".
+
+### Work Item / Session
+
+`POST /api/operational-integrity/work-item-session` crea el vínculo sólo si
+Task y Session existen y pertenecen al mismo proyecto. El vínculo es una
+proyección precedida por el evento Tier A `WorkItemSessionLinked`: si el evento
+no persiste, la relación no se crea.
+
+`GET /api/operational-integrity/work-items/:id` devuelve un snapshot centrado
+en el Work Item: Task, Sessions vinculadas, controles definidos/ejecutados y
+Evidence reciente. La conversación deja de ser el objeto raíz del estado
+operativo.
+
+### Persistencia
+
+Migración: `supabase/schema_operational_integrity_v1.sql`.
+
+Las cuatro tablas nuevas son server-side-only en v1 y tienen RLS deny-by-default:
+
+- `work_item_session_links`;
+- `control_definitions`;
+- `control_runs`;
+- `evidence_records`.
+
+No se reemplaza Event Log, Task, Knowledge ni Context Builder.
+
+### Límites de este piloto
+
+- No hay UI todavía.
+- No existe un motor genérico de workflows/gates.
+- No se declara confianza total en Evidence: se preserva
+  `verifier_relation` para que la relación entre sujeto y verificador sea
+  explícita.
+- El único claim de coverage completa es el HEAD de **una rama concreta**;
+  no se generaliza a repo, CI ni producto.
+- No hay reconciliación multiagente automática.
+- ADR-010 permanece `PROPOSED` en el Governance Canon hasta que este slice
+  tenga evidencia operacional suficiente.
+
+### Criterio de validación
+
+El slice se considera técnicamente integrado cuando:
+
+1. TypeScript/Next build pasa sobre el SHA exacto del branch.
+2. La migración se aplica sin tocar datos existentes.
+3. Una Task real puede vincularse con una Session real.
+4. El control GitHub produce PASS cuando expected SHA = HEAD real.
+5. El mismo control produce FAIL con un SHA deliberadamente distinto.
+6. Ambos runs conservan sujeto, SHA real, timestamp, verifier y artifact.
+7. El snapshot del Work Item recupera Sessions, Runs y Evidence.
+8. La validación del estado integrado se repite después del merge sobre
+   el SHA de `main`.
+
+Hasta completar estos puntos, el slice es **EXPERIMENTAL**, no evidencia
+suficiente para promover ADR-010.
