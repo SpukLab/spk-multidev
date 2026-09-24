@@ -659,6 +659,7 @@ export default function HomePage() {
         open={tasksDrawerOpen}
         onClose={() => setTasksDrawerOpen(false)}
         projectId={projectId}
+        currentSessionId={currentSessionId}
         onActiveTaskChanged={() => refreshActiveTask(projectId)}
       />
 
