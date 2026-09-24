@@ -1,0 +1,182 @@
+name: Checkpoint Handoff Production E2E
+
+on:
+  push:
+    branches:
+      - "test/checkpoint-handoff-prod-e2e"
+
+permissions:
+  contents: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      BASE_URL: https://spk-multidev.vercel.app
+      PROJECT_ID: 0f98c6fc-dd08-41b0-b626-fda8c77a7017
+      WORK_ITEM_ID: 2882d4e9-3b62-49f5-87e9-314e0ec59134
+      SESSION_A: d8aac657-113a-4c57-a97f-62ef19567dc7
+      SESSION_B: 93842a1e-722d-4ded-b43e-f9f78c0162a8
+      GOOD_EVIDENCE: 8e221c63-0eb7-480f-8f7f-c87a0de4bf9b
+      FOREIGN_EVIDENCE: 1340038e-234c-4b58-9313-f428d67105bb
+      REPAIR_CHECKPOINT_ID: 3339cdce-c909-4f32-b6ef-40f7cb650779
+      STATE_BRANCH: test/checkpoint-handoff-state
+      ORIGINAL_STATE_SHA: 44992267a2b26f526f75480aa7f3eac397c49190
+      DEPLOYED_MAIN_SHA: e988a81932a16d537b558d1a79431de5921f59b0
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Probe production
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$BASE_URL" -o root.html
+          test -s root.html
+
+      - name: Reject foreign Evidence
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --location             -o foreign-evidence.json -w "%{http_code}"             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"sourceSessionId\":\"$SESSION_A\",\"branch\":\"$STATE_BRANCH\",\"completed\":[],\"modifiedFiles\":[],\"failedAttempts\":[],\"blockers\":[],\"pendingDecisions\":[],\"nextAction\":\"must reject foreign evidence\",\"evidenceIds\":[\"$FOREIGN_EVIDENCE\"]}"             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints")
+          test "$code" = "409"
+          python3 - <<'PY'
+          import json
+          d=json.load(open("foreign-evidence.json"))
+          assert "Evidence" in d["error"], d
+          print("FOREIGN_EVIDENCE_REJECTED", d["error"])
+          PY
+
+      - name: Create checkpoint in Session A
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"sourceSessionId\":\"$SESSION_A\",\"branch\":\"$STATE_BRANCH\",\"completed\":[\"schema and API implemented\"],\"modifiedFiles\":[\"lib/db/checkpoints.ts\"],\"failedAttempts\":[\"initial TS payload typing\"],\"blockers\":[],\"pendingDecisions\":[\"operator UI later\"],\"nextAction\":\"resume from Session B\",\"notes\":\"production runtime e2e\",\"evidenceIds\":[\"$GOOD_EVIDENCE\"]}"             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints" > checkpoint.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("checkpoint.json"))
+          cp=d["checkpoint"]
+          assert cp["work_item_id"] == os.environ["WORK_ITEM_ID"], d
+          assert cp["source_session_id"] == os.environ["SESSION_A"], d
+          assert cp["repo_head_sha"] == os.environ["ORIGINAL_STATE_SHA"], d
+          assert cp["evidenceIds"] == [os.environ["GOOD_EVIDENCE"]], d
+          assert d["repairedProjection"] is False
+          print("CHECKPOINT", cp["id"], cp["repo_head_sha"])
+          PY
+
+      - name: Delete source Session
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location -X DELETE             "$BASE_URL/api/sessions/$SESSION_A" > delete-source.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("delete-source.json"))
+          assert d["ok"] is True, d
+          print("SOURCE_SESSION_DELETED")
+          PY
+
+      - name: Repair projection from canonical checkpoint event
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"sourceSessionId\":\"$SESSION_A\",\"branch\":\"$STATE_BRANCH\",\"checkpointId\":\"$REPAIR_CHECKPOINT_ID\",\"completed\":[],\"modifiedFiles\":[],\"failedAttempts\":[],\"blockers\":[],\"pendingDecisions\":[],\"nextAction\":\"repair projection\",\"evidenceIds\":[]}"             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints" > repair.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("repair.json"))
+          assert d["repairedProjection"] is True, d
+          assert d["checkpoint"]["id"] == os.environ["REPAIR_CHECKPOINT_ID"], d
+          assert d["checkpoint"]["source_session_id"] == os.environ["SESSION_A"], d
+          print("PROJECTION_REPAIRED", d["checkpoint"]["id"])
+          PY
+
+      - name: Checkpoints survive source Session deletion
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints" > list.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("list.json"))
+          ids={c["id"] for c in d["checkpoints"]}
+          cp=json.load(open("checkpoint.json"))["checkpoint"]["id"]
+          assert cp in ids, (cp, ids)
+          assert os.environ["REPAIR_CHECKPOINT_ID"] in ids, ids
+          print("CHECKPOINTS_SURVIVE_SESSION_DELETE", len(ids))
+          PY
+
+      - name: Resume with unavailable verifier returns UNKNOWN
+        run: |
+          set -euo pipefail
+          CP=$(python3 -c 'import json; print(json.load(open("checkpoint.json"))["checkpoint"]["id"])')
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"targetSessionId\":\"$SESSION_B\",\"githubToken\":\"definitely-invalid-token\"}"             "$BASE_URL/api/operational-integrity/checkpoints/$CP/resume" > resume-unknown.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("resume-unknown.json"))
+          assert d["handoff"]["state"] == "unknown", d
+          assert "repo_head_unavailable" in d["handoff"]["reasons"], d
+          assert d["stateMatchConfirmed"] is False
+          assert d["requiresStateRevalidation"] is True
+          print("UNKNOWN", d["handoff"]["reasons"])
+          PY
+
+      - name: Resume unchanged state
+        run: |
+          set -euo pipefail
+          CP=$(python3 -c 'import json; print(json.load(open("checkpoint.json"))["checkpoint"]["id"])')
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"targetSessionId\":\"$SESSION_B\"}"             "$BASE_URL/api/operational-integrity/checkpoints/$CP/resume" > resume-same.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("resume-same.json"))
+          assert d["handoff"]["state"] == "same_state", d
+          assert d["handoff"]["reasons"] == [], d
+          assert d["stateMatchConfirmed"] is True
+          assert d["requiresStateRevalidation"] is False
+          print("SAME_STATE")
+          PY
+
+      - name: Advance observed branch HEAD
+        run: |
+          set -euo pipefail
+          content=$(printf 'checkpoint handoff e2e %s\n' "$GITHUB_RUN_ID" | base64 -w0)
+          gh api --method PUT             "repos/SpukLab/spk-multidev/contents/.checkpoint-handoff-e2e-marker"             -f message="test(checkpoint): advance handoff state branch"             -f content="$content"             -f branch="$STATE_BRANCH" > branch-advance.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("branch-advance.json"))
+          assert d["commit"]["sha"]
+          print("ADVANCED_SHA", d["commit"]["sha"])
+          PY
+
+      - name: Resume after real HEAD change
+        run: |
+          set -euo pipefail
+          CP=$(python3 -c 'import json; print(json.load(open("checkpoint.json"))["checkpoint"]["id"])')
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"targetSessionId\":\"$SESSION_B\"}"             "$BASE_URL/api/operational-integrity/checkpoints/$CP/resume" > resume-changed.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("resume-changed.json"))
+          h=d["handoff"]
+          assert h["state"] == "changed_state", d
+          assert "repo_head_changed" in h["reasons"], d
+          assert h["observed_repo_head_sha"] != os.environ["ORIGINAL_STATE_SHA"], h
+          assert d["stateMatchConfirmed"] is False
+          assert d["requiresStateRevalidation"] is True
+          print("CHANGED_STATE", h["observed_repo_head_sha"])
+          PY
+
+      - name: Restore observed branch
+        if: always()
+        run: |
+          gh api --method PATCH             "repos/SpukLab/spk-multidev/git/refs/heads/$STATE_BRANCH"             -f sha="$ORIGINAL_STATE_SHA" -F force=true
+
+      - name: Upload runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-handoff-production-e2e
+          path: |
+            root.html
+            foreign-evidence.json
+            checkpoint.json
+            delete-source.json
+            repair.json
+            list.json
+            resume-unknown.json
+            resume-same.json
+            branch-advance.json
+            resume-changed.json
+          if-no-files-found: warn
