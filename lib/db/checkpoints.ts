@@ -402,7 +402,7 @@ export async function createWorkCheckpoint(params: {
     projectId: params.projectId,
     entityId: params.workItemId,
     timestamp: createdAt,
-    payload: canonical,
+    payload: { ...canonical },
   });
 
   if (!logged) {
@@ -655,7 +655,7 @@ export async function evaluateCheckpointForResume(params: {
     projectId: checkpoint.project_id,
     entityId: checkpoint.work_item_id,
     timestamp: evaluatedAt,
-    payload: canonical,
+    payload: { ...canonical },
   });
 
   if (!logged) {
