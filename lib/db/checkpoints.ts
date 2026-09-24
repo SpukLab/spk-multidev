@@ -173,6 +173,7 @@ export async function listCheckpointsForWorkItem(
 
 interface CanonicalCheckpointPayload {
   checkpointId: string;
+  projectId: string;
   workItemId: string;
   sourceSessionId: string;
   workItemUpdatedAt: string;
@@ -192,6 +193,7 @@ function checkpointPayloadFromEvent(payload: unknown): CanonicalCheckpointPayloa
   const p = (payload ?? {}) as Partial<CanonicalCheckpointPayload>;
   if (
     !p.checkpointId ||
+    !p.projectId ||
     !p.workItemId ||
     !p.sourceSessionId ||
     !p.workItemUpdatedAt ||
@@ -208,6 +210,7 @@ function checkpointPayloadFromEvent(payload: unknown): CanonicalCheckpointPayloa
 
   return {
     checkpointId: p.checkpointId,
+    projectId: p.projectId,
     workItemId: p.workItemId,
     sourceSessionId: p.sourceSessionId,
     workItemUpdatedAt: p.workItemUpdatedAt,
@@ -232,7 +235,7 @@ async function materializeCheckpoint(payload: CanonicalCheckpointPayload): Promi
     .upsert(
       {
         id: payload.checkpointId,
-        project_id: (await getTask(payload.workItemId))?.project_id,
+        project_id: payload.projectId,
         work_item_id: payload.workItemId,
         source_session_id: payload.sourceSessionId,
         work_item_updated_at: payload.workItemUpdatedAt,
@@ -376,6 +379,7 @@ export async function createWorkCheckpoint(params: {
   const createdAt = new Date().toISOString();
   const canonical: CanonicalCheckpointPayload = {
     checkpointId,
+    projectId: params.projectId,
     workItemId: task.id,
     sourceSessionId: params.sourceSessionId,
     workItemUpdatedAt: task.updated_at,
