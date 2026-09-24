@@ -1476,7 +1476,7 @@ else observation unavailable → unknown
 else → same_state
 ```
 
-Sólo `same_state` devuelve `usableWithoutRevalidation=true`.
+Sólo `same_state` devuelve `stateMatchConfirmed=true` y `requiresStateRevalidation=false`. Esto confirma compatibilidad del estado observado; **no** convierte el contenido declarado del checkpoint en Evidence ni en verdad verificada.
 
 `changed_state` no elimina el checkpoint: sigue siendo contexto recuperable,
 pero debe revalidarse antes de tratarlo como estado actual.
