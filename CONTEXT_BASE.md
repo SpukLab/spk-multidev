@@ -1386,3 +1386,145 @@ Esta corrección implementa directamente el límite:
 `EVIDENCE ≠ TRUSTED EVIDENCE`
 
 sin invalidar la procedencia factual ya capturada.
+
+
+## 33. ADR-013 — Checkpoint & Handoff v1 — EXPERIMENTAL
+
+**Origen:** siguiente vertical slice sobre ADR-010 `ACTIVE`. El objetivo es
+cerrar la recuperación operacional entre Sessions sin usar el transcript como
+fuente de verdad.
+
+### Distinción central
+
+```
+WORK ITEM ≠ SESSION ≠ CHECKPOINT
+CONTEXT ≠ STATE
+CHECKPOINT CONTENT ≠ VERIFIED FACT
+```
+
+Una Session puede terminar. El Work Item continúa. Un Checkpoint es un artifact
+durable e inmutable que captura el estado necesario para retomar ese Work Item
+desde otra Session.
+
+### Checkpoint v1
+
+Persistencia nueva: `work_checkpoints`.
+
+Cada checkpoint conserva:
+
+- Work Item;
+- Session origen;
+- snapshot del Work Item y su `updated_at`;
+- repo + branch;
+- HEAD SHA observado **server-side desde GitHub**;
+- estado declarado:
+  - completed;
+  - modifiedFiles;
+  - failedAttempts;
+  - blockers;
+  - pendingDecisions;
+  - nextAction;
+  - notes;
+- Evidence IDs explícitamente vinculadas;
+- actor, timestamp y versión.
+
+Los campos narrativos son **declaraciones de handoff**, no se promueven a
+Evidence sólo por persistir. La identidad Git/Work Item sí queda capturada de
+fuentes estructurales y permite revalidación posterior.
+
+La Session origen se valida al crear el checkpoint y debe estar vinculada al
+mismo Work Item. Su UUID se conserva sin foreign key deliberadamente: borrar o
+archivar la Session no debe borrar la procedencia histórica del checkpoint.
+
+### Event Canon — extensión por capacidad real
+
+La regla 5 del Event Canon permite agregar eventos cuando existe un emisor real.
+ADR-013 agrega:
+
+- `WorkCheckpointCreated` — Tier A. El evento contiene el payload suficiente
+  para reconstruir la proyección `work_checkpoints` y sus Evidence links.
+- `WorkHandoffEvaluated` — Tier A. Registra la evaluación de un checkpoint
+  contra el estado observado al intentar retomarlo en otra Session.
+
+Ambos siguen **event-first**. Si el evento quedó durable y falla la proyección,
+un retry con el mismo ID reconstruye desde el payload canónico en vez de emitir
+un evento duplicado.
+
+### Resume / Handoff
+
+Ruta:
+
+`POST /api/operational-integrity/checkpoints/:id/resume`
+
+La Session destino se vincula explícitamente al Work Item antes de evaluar el
+handoff. Después se comparan dos dimensiones:
+
+1. `checkpoint.work_item_updated_at` vs. Work Item actual;
+2. `checkpoint.repo_head_sha` vs. HEAD real actual de la misma branch.
+
+Estados:
+
+- `same_state`: ninguna dimensión material conocida cambió;
+- `changed_state`: cambió Work Item, repository identity o HEAD;
+- `unknown`: no hay cambio conocido, pero el HEAD actual no pudo observarse.
+
+Regla de clasificación:
+
+```
+known material change → changed_state
+else observation unavailable → unknown
+else → same_state
+```
+
+Sólo `same_state` devuelve `stateMatchConfirmed=true` y `requiresStateRevalidation=false`. Esto confirma compatibilidad del estado observado; **no** convierte el contenido declarado del checkpoint en Evidence ni en verdad verificada.
+
+`changed_state` no elimina el checkpoint: sigue siendo contexto recuperable,
+pero debe revalidarse antes de tratarlo como estado actual.
+
+`unknown` nunca se convierte implícitamente en éxito.
+
+### Persistencia
+
+Migración: `supabase/schema_checkpoint_handoff_v1.sql`.
+
+Tablas server-side-only / RLS deny-by-default:
+
+- `work_checkpoints`;
+- `checkpoint_evidence_links`;
+- `checkpoint_handoffs`.
+
+Los Handoffs son append-only. Cada intento de resume produce una evaluación
+nueva ligada al checkpoint específico y a la Session destino.
+
+### API
+
+`POST /api/operational-integrity/work-items/:id/checkpoints`
+
+Crea checkpoint ligado al HEAD real actual.
+
+`GET /api/operational-integrity/work-items/:id/checkpoints`
+
+Lista checkpoints del Work Item, más recientes primero.
+
+`POST /api/operational-integrity/checkpoints/:id/resume`
+
+Evalúa compatibilidad del checkpoint con el estado actual y devuelve el handoff.
+
+### Criterio de validación
+
+ADR-013 permanece `EXPERIMENTAL` hasta demostrar sobre estado integrado:
+
+1. creación real de Checkpoint en Session A;
+2. Evidence refs válidas quedan ligadas y refs ajenas son rechazadas;
+3. Session B retoma el mismo Work Item;
+4. sin cambios de repo/Task → `same_state`;
+5. después de un cambio real de HEAD → `changed_state`;
+6. si GitHub no puede observarse → `unknown`, no PASS;
+7. la Session origen puede eliminarse sin destruir el checkpoint;
+8. retry con evento canónico durable puede reparar una proyección faltante;
+9. CI TypeScript + Next build pasa sobre el SHA exacto del branch;
+10. después del merge se repite E2E sobre el SHA integrado de `main`.
+
+No se incorpora UI todavía y no se inyecta un checkpoint automáticamente en el
+prompt. Primero se valida la primitive de recuperación; la Operator Surface se
+construirá encima si esta base demuestra estabilidad.
