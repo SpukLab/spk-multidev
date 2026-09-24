@@ -1,0 +1,163 @@
+name: Runtime Integrity E2E
+
+on:
+  push:
+    branches:
+      - "test/runtime-integrity-e2e"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://spk-multidev.vercel.app
+      PROJECT_ID: 56adc4b2-aebf-433e-a7b6-a38f12dd1035
+      WORK_ITEM_ID: e4ea2663-9ec4-4001-b407-baab87a4ca62
+      EXPECTED_MAIN_SHA: 44992267a2b26f526f75480aa7f3eac397c49190
+    steps:
+      - name: Probe deployed app
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location "$BASE_URL" -o root.html
+          test -s root.html
+
+      - name: Create first Session
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\"}"             "$BASE_URL/api/sessions" > session1.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("session1.json"))
+          assert d["integrity"]["workItemId"] == os.environ["WORK_ITEM_ID"]
+          assert d["integrity"]["workItemLink"] == "linked", d
+          assert d["session"]["id"]
+          print("SESSION1", d["session"]["id"], d["integrity"])
+          PY
+
+      - name: Create second Session
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\"}"             "$BASE_URL/api/sessions" > session2.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("session2.json"))
+          assert d["integrity"]["workItemId"] == os.environ["WORK_ITEM_ID"]
+          assert d["integrity"]["workItemLink"] == "linked", d
+          assert d["session"]["id"]
+          print("SESSION2", d["session"]["id"], d["integrity"])
+          PY
+
+      - name: Verify Work Item spans two Sessions
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID" > snapshot.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("snapshot.json"))["snapshot"]
+          assert d["workItem"]["id"] == os.environ["WORK_ITEM_ID"]
+          assert len(d["sessions"]) >= 2, d["sessions"]
+          ids={x["id"] for x in d["sessions"]}
+          s1=json.load(open("session1.json"))["session"]["id"]
+          s2=json.load(open("session2.json"))["session"]["id"]
+          assert s1 in ids and s2 in ids, (s1,s2,ids)
+          print("WORK_ITEM_SESSION_COUNT", len(d["sessions"]))
+          PY
+
+      - name: GitHub SHA control PASS
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"workItemId\":\"$WORK_ITEM_ID\",\"branch\":\"main\",\"expectedSha\":\"$EXPECTED_MAIN_SHA\"}"             "$BASE_URL/api/operational-integrity/controls/github-branch-head" > control-pass.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("control-pass.json"))
+          assert d["controlDefined"] is True
+          assert d["controlExecuted"] is True
+          assert d["controlPassed"] is True, d
+          assert d["actualSha"] == os.environ["EXPECTED_MAIN_SHA"], d
+          assert d["evidencePersisted"] is True
+          vi=d["verifierIntegrity"]
+          assert vi["relation"] == "shared_control", vi
+          assert vi["implementationVersionObserved"] is True, vi
+          assert vi["implementationSha"] == os.environ["EXPECTED_MAIN_SHA"], vi
+          print("PASS_CONTROL", d["actualSha"], vi)
+          PY
+
+      - name: GitHub SHA control deliberate FAIL
+        run: |
+          set -euo pipefail
+          BAD_SHA=0000000000000000000000000000000000000000
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"workItemId\":\"$WORK_ITEM_ID\",\"branch\":\"main\",\"expectedSha\":\"$BAD_SHA\"}"             "$BASE_URL/api/operational-integrity/controls/github-branch-head" > control-fail.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("control-fail.json"))
+          assert d["controlDefined"] is True
+          assert d["controlExecuted"] is True
+          assert d["controlPassed"] is False, d
+          assert d["actualSha"] == os.environ["EXPECTED_MAIN_SHA"], d
+          assert d["evidencePersisted"] is True
+          assert d["verifierIntegrity"]["relation"] == "shared_control"
+          print("FAIL_CONTROL", d["actualSha"], d["run"]["outcome"])
+          PY
+
+      - name: Coverage PARTIAL
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"workItemId\":\"$WORK_ITEM_ID\",\"branch\":\"main\",\"path\":\"tsconfig.json\",\"maxFiles\":1}"             "$BASE_URL/api/operational-integrity/observations/github-path" > coverage-partial.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("coverage-partial.json"))
+          assert d["result"] == "partial", d
+          assert d["coverage"]["complete"] is False, d
+          assert d["pathObserved"] is False, d
+          assert d["subjectVersion"] == os.environ["EXPECTED_MAIN_SHA"], d
+          assert d["verifierIntegrity"]["relation"] == "shared_control"
+          print("PARTIAL", d["coverage"])
+          PY
+
+      - name: Coverage NOT_OBSERVED only with complete coverage
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"workItemId\":\"$WORK_ITEM_ID\",\"branch\":\"main\",\"path\":\"__definitely_missing_runtime_e2e__\",\"maxFiles\":5000}"             "$BASE_URL/api/operational-integrity/observations/github-path" > coverage-not-observed.json
+          python3 - <<'PY'
+          import json, os
+          d=json.load(open("coverage-not-observed.json"))
+          assert d["result"] == "not_observed", d
+          assert d["coverage"]["complete"] is True, d
+          assert d["pathObserved"] is False, d
+          assert d["subjectVersion"] == os.environ["EXPECTED_MAIN_SHA"], d
+          print("NOT_OBSERVED", d["coverage"])
+          PY
+
+      - name: Authority conflict remains explicit
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d "{\"projectId\":\"$PROJECT_ID\",\"grantee\":\"agent:e2e\",\"action\":\"merge\",\"resourceScope\":\"repo:SpukLab/spk-multidev\"}"             "$BASE_URL/api/operational-integrity/authority/evaluate" > authority.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("authority.json"))
+          assert d["state"] == "authority_conflict", d
+          assert d["allowCount"] >= 1 and d["denyCount"] >= 1, d
+          assert d["exactScope"] is True
+          assert d["precedenceApplied"] is False
+          print("AUTHORITY", d)
+          PY
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-integrity-e2e
+          path: |
+            root.html
+            session1.json
+            session2.json
+            snapshot.json
+            control-pass.json
+            control-fail.json
+            coverage-partial.json
+            coverage-not-observed.json
+            authority.json
+          if-no-files-found: warn
