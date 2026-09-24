@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   TaskContinuityPanel,
+  TaskCheckpointEvaluation,
   TaskCheckpointSummary,
 } from "@/components/TaskContinuityPanel";
 
@@ -42,11 +43,13 @@ export function TasksDrawer({
   open,
   onClose,
   projectId,
+  currentSessionId,
   onActiveTaskChanged,
 }: {
   open: boolean;
   onClose: () => void;
   projectId: string | null;
+  currentSessionId: string | null;
   onActiveTaskChanged?: () => void;
 }) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -57,6 +60,9 @@ export function TasksDrawer({
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [checkpoints, setCheckpoints] = useState<TaskCheckpointSummary[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
+  const [checkpointEvaluation, setCheckpointEvaluation] =
+    useState<TaskCheckpointEvaluation | null>(null);
+  const [checkpointEvaluating, setCheckpointEvaluating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newObjective, setNewObjective] = useState("");
   const [creating, setCreating] = useState(false);
@@ -148,6 +154,7 @@ export function TasksDrawer({
   async function handleOpenTask(taskId: string) {
     setOpenTaskId(taskId);
     setCheckpoints([]);
+    setCheckpointEvaluation(null);
     setCheckpointsLoading(true);
 
     try {
@@ -174,6 +181,47 @@ export function TasksDrawer({
       setError("No se pudo cargar el detalle de continuidad del Work Item.");
     } finally {
       setCheckpointsLoading(false);
+    }
+  }
+
+  async function handleEvaluateContinuity(checkpointId: string) {
+    if (!currentSessionId) {
+      setError("Abrí o creá un chat antes de evaluar continuidad.");
+      return;
+    }
+
+    setCheckpointEvaluating(true);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        `/api/operational-integrity/checkpoints/${checkpointId}/resume`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ targetSessionId: currentSessionId }),
+        }
+      );
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setCheckpointEvaluation(null);
+        setError(
+          `No se pudo evaluar la continuidad: ${data.error ?? `HTTP ${res.status}`}`
+        );
+        return;
+      }
+
+      setCheckpointEvaluation(data as TaskCheckpointEvaluation);
+    } catch (err) {
+      setCheckpointEvaluation(null);
+      setError(
+        err instanceof Error
+          ? `No se pudo evaluar la continuidad: ${err.message}`
+          : "No se pudo evaluar la continuidad."
+      );
+    } finally {
+      setCheckpointEvaluating(false);
     }
   }
 
@@ -325,6 +373,10 @@ export function TasksDrawer({
                 <TaskContinuityPanel
                   checkpoints={checkpoints}
                   loading={checkpointsLoading}
+                  currentSessionId={currentSessionId}
+                  evaluation={checkpointEvaluation}
+                  evaluating={checkpointEvaluating}
+                  onEvaluate={handleEvaluateContinuity}
                 />
 
                 <h4 style={{ color: "#888", fontSize: 12, marginTop: 16, marginBottom: 6 }}>Historial (eventos)</h4>
