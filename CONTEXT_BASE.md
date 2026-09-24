@@ -1528,3 +1528,100 @@ ADR-013 permanece `EXPERIMENTAL` hasta demostrar sobre estado integrado:
 No se incorpora UI todavía y no se inyecta un checkpoint automáticamente en el
 prompt. Primero se valida la primitive de recuperación; la Operator Surface se
 construirá encima si esta base demuestra estabilidad.
+
+### Evidencia de validación post-merge — 2026-09-24
+
+Implementación integrada en `main`:
+
+`SpukLab/spk-multidev@e988a81932a16d537b558d1a79431de5921f59b0`
+
+Controles de integración:
+
+- GitHub Actions CI run `35997702223` sobre el SHA integrado: TypeScript PASS
+  y Next.js build PASS.
+- Vercel reportó deployment `success` para ese mismo SHA.
+
+El Preview Deployment estaba protegido por Vercel Authentication, por lo que el
+E2E final se ejecutó contra el deployment público de producción
+`https://spk-multidev.vercel.app`, después de confirmar que correspondía al
+SHA integrado.
+
+Evidencia runtime:
+
+- workflow run: `35997928448`;
+- job: `107627217033`;
+- artifact: `checkpoint-handoff-production-e2e`;
+- artifact ID: `10807042191`;
+- digest:
+  `sha256:3c1a1254c4995429f06fcfd41cfbc7ecfd2ad8220137e5c8455ea37ef587aff6`.
+
+Resultados observados:
+
+1. **Evidence scope**
+   - un `evidenceId` perteneciente a otro Work Item fue rechazado con HTTP
+     409;
+   - una Evidence del mismo Work Item quedó ligada al checkpoint real.
+
+2. **Checkpoint real en Session A**
+   - el checkpoint se creó mediante la API desplegada;
+   - quedó ligado a branch `test/checkpoint-handoff-state`;
+   - el HEAD observado fue exactamente
+     `44992267a2b26f526f75480aa7f3eac397c49190`;
+   - conservó la Evidence declarada y el estado estructurado del handoff.
+
+3. **Durabilidad independiente de Session**
+   - Session A fue eliminada físicamente después de crear el checkpoint;
+   - el checkpoint permaneció recuperable;
+   - la procedencia histórica `source_session_id` permaneció intacta.
+
+4. **Reparación event-first**
+   - existía un `WorkCheckpointCreated` Tier A durable sin proyección;
+   - después de borrar Session A, un retry con el mismo `checkpointId`
+     reconstruyó la proyección;
+   - `repairedProjection=true`;
+   - no fue necesario recrear la Session origen ni emitir un hecho canónico
+     duplicado.
+
+5. **Estado desconocido**
+   - al forzar fallo de observación GitHub con credencial inválida:
+     `state=unknown`;
+   - reason: `repo_head_unavailable`;
+   - `stateMatchConfirmed=false`;
+   - `requiresStateRevalidation=true`.
+   - El sistema no convirtió ausencia de observación en éxito.
+
+6. **Estado compatible**
+   - sin modificar Task ni HEAD:
+     `state=same_state`;
+   - reasons vacío;
+   - `stateMatchConfirmed=true`;
+   - `requiresStateRevalidation=false`.
+   - Esto confirma compatibilidad del estado observado, no veracidad automática
+     de las declaraciones narrativas del checkpoint.
+
+7. **Drift real**
+   - el HEAD de la branch observada se avanzó realmente a
+     `22a6c8d1eb82b628daf711947c68c1cf54fe19b0`;
+   - el siguiente resume devolvió `changed_state`;
+   - reason: `repo_head_changed`;
+   - el branch fue restaurado después a
+     `44992267a2b26f526f75480aa7f3eac397c49190`.
+
+8. **Persistencia post-E2E**
+   - 2 checkpoints permanecían durables;
+   - 3 handoffs distintos: `unknown`, `same_state`, `changed_state`;
+   - 2 eventos `WorkCheckpointCreated`;
+   - 3 eventos `WorkHandoffEvaluated`;
+   - Session A: eliminada;
+   - Session B: existente y vinculada al mismo Work Item.
+
+### Estado de ADR-013
+
+El vertical slice cumple los diez criterios técnicos definidos arriba y queda
+**runtime-validated dentro de su estado EXPERIMENTAL**.
+
+No se promueve todavía a una regla global del Governance Canon. La siguiente
+prueba útil ya no es otro fixture: es utilizar Checkpoint + Handoff durante un
+bloque real de desarrollo que atraviese una Session A y una Session B. Sólo
+después de esa experiencia conviene decidir si la primitive se estabiliza como
+Pattern/ADR canónico o requiere otra revisión.
