@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  TaskContinuityPanel,
+  TaskCheckpointSummary,
+} from "@/components/TaskContinuityPanel";
 
 interface Task {
   id: string;
@@ -51,6 +55,8 @@ export function TasksDrawer({
   const [error, setError] = useState<string | null>(null);
   const [openTaskId, setOpenTaskId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [checkpoints, setCheckpoints] = useState<TaskCheckpointSummary[]>([]);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newObjective, setNewObjective] = useState("");
   const [creating, setCreating] = useState(false);
@@ -141,12 +147,33 @@ export function TasksDrawer({
 
   async function handleOpenTask(taskId: string) {
     setOpenTaskId(taskId);
+    setCheckpoints([]);
+    setCheckpointsLoading(true);
+
     try {
-      const res = await fetch(`/api/tasks/${taskId}`);
-      const data = await res.json();
-      setHistory(data.history ?? []);
+      const [taskRes, checkpointRes] = await Promise.all([
+        fetch(`/api/tasks/${taskId}`),
+        fetch(`/api/operational-integrity/work-items/${taskId}/checkpoints?limit=10`),
+      ]);
+
+      const [taskData, checkpointData] = await Promise.all([
+        taskRes.json(),
+        checkpointRes.json(),
+      ]);
+
+      setHistory(taskData.history ?? []);
+      setCheckpoints(checkpointData.checkpoints ?? []);
+
+      if (taskData.error) setError(taskData.error);
+      if (checkpointData.error) {
+        setError(`No se pudieron cargar los checkpoints: ${checkpointData.error}`);
+      }
     } catch {
       setHistory([]);
+      setCheckpoints([]);
+      setError("No se pudo cargar el detalle de continuidad del Work Item.");
+    } finally {
+      setCheckpointsLoading(false);
     }
   }
 
@@ -294,6 +321,11 @@ export function TasksDrawer({
                     </button>
                   )}
                 </div>
+
+                <TaskContinuityPanel
+                  checkpoints={checkpoints}
+                  loading={checkpointsLoading}
+                />
 
                 <h4 style={{ color: "#888", fontSize: 12, marginTop: 16, marginBottom: 6 }}>Historial (eventos)</h4>
                 <div style={{ fontSize: 11, color: "#999" }}>
