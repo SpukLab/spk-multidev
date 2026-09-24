@@ -336,11 +336,17 @@ export async function createWorkCheckpoint(params: {
   if (priorEventError) throw priorEventError;
   if (priorEvent) {
     const canonical = checkpointPayloadFromEvent(priorEvent.payload);
-    if (canonical.workItemId !== params.workItemId) {
-      throw new CheckpointError("El evento canónico pertenece a otro Work Item.", {
-        checkpointId,
-        canonicalEventPersisted: true,
-      });
+    if (
+      canonical.projectId !== params.projectId ||
+      canonical.workItemId !== params.workItemId
+    ) {
+      throw new CheckpointError(
+        "El evento canónico no coincide con el proyecto/Work Item solicitado.",
+        {
+          checkpointId,
+          canonicalEventPersisted: true,
+        }
+      );
     }
     return {
       checkpoint: await materializeCheckpoint(canonical),
@@ -541,7 +547,8 @@ export async function evaluateCheckpointForResume(params: {
     return {
       checkpoint,
       handoff: existingHandoff as CheckpointHandoff,
-      usableWithoutRevalidation: existingHandoff.state === "same_state",
+      stateMatchConfirmed: existingHandoff.state === "same_state",
+      requiresStateRevalidation: existingHandoff.state !== "same_state",
       repairedProjection: false,
     };
   }
@@ -559,10 +566,23 @@ export async function evaluateCheckpointForResume(params: {
   if (priorEventError) throw priorEventError;
   if (priorEvent) {
     const canonical = handoffPayloadFromEvent(priorEvent.payload);
+    if (
+      canonical.checkpointId !== checkpoint.id ||
+      canonical.workItemId !== checkpoint.work_item_id
+    ) {
+      throw new CheckpointError(
+        "El evento canónico de handoff no coincide con el checkpoint solicitado.",
+        {
+          handoffId,
+          canonicalEventPersisted: true,
+        }
+      );
+    }
     return {
       checkpoint,
       handoff: await materializeHandoff(checkpoint.project_id, canonical),
-      usableWithoutRevalidation: canonical.state === "same_state",
+      stateMatchConfirmed: canonical.state === "same_state",
+      requiresStateRevalidation: canonical.state !== "same_state",
       repairedProjection: true,
     };
   }
@@ -670,7 +690,8 @@ export async function evaluateCheckpointForResume(params: {
   return {
     checkpoint,
     handoff,
-    usableWithoutRevalidation: state === "same_state",
+    stateMatchConfirmed: state === "same_state",
+    requiresStateRevalidation: state !== "same_state",
     repairedProjection: false,
   };
 }
