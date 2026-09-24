@@ -1,4 +1,4 @@
-name: Real Checkpoint Handoff Start
+name: Real Checkpoint Handoff Midpoint
 
 on:
   push:
@@ -6,77 +6,128 @@ on:
       - "test/checkpoint-handoff-prod-e2e"
 
 jobs:
-  start-real-work:
+  checkpoint-and-resume:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 10
     env:
       BASE_URL: https://spk-multidev.vercel.app
       PROJECT_ID: 2dace320-6a73-44ae-8b47-80797d739d9f
+      WORK_ITEM_ID: 94ccbd00-4ad0-4261-9f17-0bec45e6956f
+      SESSION_A: efa4fcc6-8277-47c3-a5cf-a4f3bef0479d
       DEV_BRANCH: feature/checkpoint-operator-continuity-v1
+      DEV_SHA: 7a48089bc7ef30fdef08ff8cf48cfdd0c920cd8d
 
     steps:
-      - name: Create real Work Item
+      - name: Record deterministic branch-head Evidence
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","title":"Operator continuity surface v1","objective":"Expose durable Checkpoints in the Task operator surface and allow the current Session to evaluate resume compatibility before continuing work.","acceptanceCriteria":"Task detail shows latest Checkpoints; current Session can evaluate the latest Checkpoint; UI distinguishes same_state, changed_state and unknown without treating narrative checkpoint content as verified Evidence."}'             "$BASE_URL/api/tasks" > task.json
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","workItemId":"'"$WORK_ITEM_ID"'","sessionId":"'"$SESSION_A"'","branch":"'"$DEV_BRANCH"'","expectedSha":"'"$DEV_SHA"'"}'             "$BASE_URL/api/operational-integrity/controls/github-branch-head" > control.json
 
-          TASK_ID=$(python3 -c 'import json; print(json.load(open("task.json"))["task"]["id"])')
-          echo "TASK_ID=$TASK_ID" >> "$GITHUB_ENV"
-          echo "TASK_ID $TASK_ID"
+          EVIDENCE_ID=$(python3 - <<'PY'
+          import json
+          d=json.load(open("control.json"))
+          assert d["controlExecuted"] is True, d
+          assert d["controlPassed"] is True, d
+          assert d["evidencePersisted"] is True, d
+          assert d["actualSha"] == "7a48089bc7ef30fdef08ff8cf48cfdd0c920cd8d", d
+          print(d["evidence"]["id"])
+          PY
+          )
+          echo "EVIDENCE_ID=$EVIDENCE_ID" >> "$GITHUB_ENV"
+          echo "EVIDENCE_ID $EVIDENCE_ID"
 
-      - name: Start and activate Work Item
+      - name: Create real checkpoint from Session A
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             -X PATCH             -H 'content-type: application/json'             -d '{"status":"in_progress"}'             "$BASE_URL/api/tasks/$TASK_ID" > task-started.json
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","sourceSessionId":"'"$SESSION_A"'","branch":"'"$DEV_BRANCH"'","completed":["Created read-only TaskContinuityPanel","Integrated checkpoint loading into TasksDrawer","Preserved distinction between checkpoint narrative and Evidence"],"modifiedFiles":["components/TaskContinuityPanel.tsx","components/TasksDrawer.tsx"],"failedAttempts":[],"blockers":[],"pendingDecisions":["Add current-Session resume evaluation controls","Map same_state / changed_state / unknown to operator-facing status"],"nextAction":"In Session B, resume this checkpoint and add an operator action that evaluates continuity against the current Session.","notes":"First real development checkpoint for ADR-013. Session A stops after the read-only continuity surface.","evidenceIds":["'"$EVIDENCE_ID"'"]}'             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints" > checkpoint.json
 
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","taskId":"'"$TASK_ID"'"}'             "$BASE_URL/api/active-task" > active-task.json
-
-          python3 - <<'PY'
+          CHECKPOINT_ID=$(python3 - <<'PY'
           import json, os
-          a=json.load(open("active-task.json"))
-          assert a["activeTask"]["id"] == os.environ["TASK_ID"], a
-          print("ACTIVE_TASK", a["activeTask"]["id"])
+          d=json.load(open("checkpoint.json"))
+          cp=d["checkpoint"]
+          assert cp["work_item_id"] == os.environ["WORK_ITEM_ID"], d
+          assert cp["source_session_id"] == os.environ["SESSION_A"], d
+          assert cp["repo_head_sha"] == os.environ["DEV_SHA"], d
+          assert os.environ["EVIDENCE_ID"] in cp["evidenceIds"], d
+          print(cp["id"])
+          PY
+          )
+          echo "CHECKPOINT_ID=$CHECKPOINT_ID" >> "$GITHUB_ENV"
+          echo "CHECKPOINT_ID $CHECKPOINT_ID"
+
+      - name: End Session A
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location -X DELETE             "$BASE_URL/api/sessions/$SESSION_A" > delete-a.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open("delete-a.json"))
+          assert d["ok"] is True, d
+          print("SESSION_A_DELETED")
           PY
 
-      - name: Create Session A linked to active Work Item
+      - name: Create Session B
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'"}'             "$BASE_URL/api/sessions" > session-a.json
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'"}'             "$BASE_URL/api/sessions" > session-b.json
 
-          SESSION_A=$(python3 -c 'import json; print(json.load(open("session-a.json"))["session"]["id"])')
-          echo "SESSION_A=$SESSION_A" >> "$GITHUB_ENV"
-
-          python3 - <<'PY'
+          SESSION_B=$(python3 - <<'PY'
           import json, os
-          d=json.load(open("session-a.json"))
-          assert d["integrity"]["workItemId"] == os.environ["TASK_ID"], d
+          d=json.load(open("session-b.json"))
+          assert d["integrity"]["workItemId"] == os.environ["WORK_ITEM_ID"], d
           assert d["integrity"]["workItemLink"] == "linked", d
-          print("SESSION_A", d["session"]["id"])
+          print(d["session"]["id"])
           PY
+          )
+          echo "SESSION_B=$SESSION_B" >> "$GITHUB_ENV"
+          echo "SESSION_B $SESSION_B"
 
-      - name: Record start evidence
+      - name: Resume checkpoint in Session B
         run: |
           set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"targetSessionId":"'"$SESSION_B"'"}'             "$BASE_URL/api/operational-integrity/checkpoints/$CHECKPOINT_ID/resume" > resume.json
+
           python3 - <<'PY'
           import json, os
-          data={
-            "projectId": os.environ["PROJECT_ID"],
-            "workItemId": os.environ["TASK_ID"],
-            "sessionA": os.environ["SESSION_A"],
-            "developmentBranch": os.environ["DEV_BRANCH"],
-            "phase": "session_a_started"
-          }
-          open("real-handoff-start.json","w").write(json.dumps(data, indent=2))
-          print(json.dumps(data))
+          d=json.load(open("resume.json"))
+          assert d["handoff"]["state"] == "same_state", d
+          assert d["stateMatchConfirmed"] is True, d
+          assert d["requiresStateRevalidation"] is False, d
+          assert d["handoff"]["target_session_id"] == os.environ["SESSION_B"], d
+          assert d["checkpoint"]["repo_head_sha"] == os.environ["DEV_SHA"], d
+          assert d["checkpoint"]["declared_state"]["nextAction"].startswith("In Session B"), d
+          print("HANDOFF", d["handoff"]["state"])
+          print("NEXT_ACTION", d["checkpoint"]["declared_state"]["nextAction"])
           PY
 
-      - name: Upload identifiers
+      - name: Persist handoff identifiers
+        run: |
+          python3 - <<'PY'
+          import json, os
+          out={
+            "projectId": os.environ["PROJECT_ID"],
+            "workItemId": os.environ["WORK_ITEM_ID"],
+            "sessionA": os.environ["SESSION_A"],
+            "sessionB": os.environ["SESSION_B"],
+            "checkpointId": os.environ["CHECKPOINT_ID"],
+            "evidenceId": os.environ["EVIDENCE_ID"],
+            "repoHeadSha": os.environ["DEV_SHA"],
+            "developmentBranch": os.environ["DEV_BRANCH"],
+            "resumeState": json.load(open("resume.json"))["handoff"]["state"],
+            "nextAction": json.load(open("checkpoint.json"))["checkpoint"]["declared_state"]["nextAction"],
+          }
+          open("real-handoff-midpoint.json","w").write(json.dumps(out,indent=2))
+          print(json.dumps(out))
+          PY
+
+      - name: Upload handoff evidence
         uses: actions/upload-artifact@v4
         with:
-          name: real-checkpoint-handoff-start
+          name: real-checkpoint-handoff-midpoint
           path: |
-            task.json
-            task-started.json
-            active-task.json
-            session-a.json
-            real-handoff-start.json
+            control.json
+            checkpoint.json
+            delete-a.json
+            session-b.json
+            resume.json
+            real-handoff-midpoint.json
