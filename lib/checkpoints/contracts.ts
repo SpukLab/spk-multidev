@@ -60,5 +60,6 @@ export interface CheckpointHandoff {
 export interface ResumeEvaluation {
   checkpoint: WorkCheckpoint;
   handoff: CheckpointHandoff;
-  usableWithoutRevalidation: boolean;
+  stateMatchConfirmed: boolean;
+  requiresStateRevalidation: boolean;
 }
