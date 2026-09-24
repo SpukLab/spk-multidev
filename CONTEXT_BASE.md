@@ -1388,7 +1388,7 @@ Esta corrección implementa directamente el límite:
 sin invalidar la procedencia factual ya capturada.
 
 
-## 33. ADR-013 — Checkpoint & Handoff v1 — EXPERIMENTAL
+## 33. ADR-013 — Checkpoint & Handoff v1 — ACTIVE
 
 **Origen:** siguiente vertical slice sobre ADR-010 `ACTIVE`. El objetivo es
 cerrar la recuperación operacional entre Sessions sin usar el transcript como
@@ -1512,7 +1512,7 @@ Evalúa compatibilidad del checkpoint con el estado actual y devuelve el handoff
 
 ### Criterio de validación
 
-ADR-013 permanece `EXPERIMENTAL` hasta demostrar sobre estado integrado:
+ADR-013 permaneció `EXPERIMENTAL` hasta demostrar sobre estado integrado:
 
 1. creación real de Checkpoint en Session A;
 2. Evidence refs válidas quedan ligadas y refs ajenas son rechazadas;
@@ -1525,9 +1525,10 @@ ADR-013 permanece `EXPERIMENTAL` hasta demostrar sobre estado integrado:
 9. CI TypeScript + Next build pasa sobre el SHA exacto del branch;
 10. después del merge se repite E2E sobre el SHA integrado de `main`.
 
-No se incorpora UI todavía y no se inyecta un checkpoint automáticamente en el
-prompt. Primero se valida la primitive de recuperación; la Operator Surface se
-construirá encima si esta base demuestra estabilidad.
+En la primera validación no se incorporó UI ni se inyectó un checkpoint
+automáticamente en el prompt. Primero se validó la primitive de recuperación;
+la Operator Surface se construyó después sobre esa base, durante la primera
+prueba real Session A → Session B.
 
 ### Evidencia de validación post-merge — 2026-09-24
 
@@ -1615,13 +1616,170 @@ Resultados observados:
    - Session A: eliminada;
    - Session B: existente y vinculada al mismo Work Item.
 
+### Primera validación real de desarrollo — 2026-09-24
+
+Después de la validación fixture/post-merge, ADR-013 se utilizó como primitive
+real durante el desarrollo de `Operator continuity surface v1`.
+
+Work Item real:
+
+`94ccbd00-4ad0-4261-9f17-0bec45e6956f`
+
+#### Session A
+
+Session:
+
+`efa4fcc6-8277-47c3-a5cf-a4f3bef0479d`
+
+Session A implementó la primera mitad del trabajo:
+
+- `components/TaskContinuityPanel.tsx`;
+- carga de checkpoints desde `components/TasksDrawer.tsx`;
+- superficie read-only con repo, branch, HEAD, Session origen, próxima acción,
+  blockers, archivos, fallos, decisiones y Evidence.
+
+HEAD exacto al cerrar Session A:
+
+`7a48089bc7ef30fdef08ff8cf48cfdd0c920cd8d`
+
+Antes del handoff se ejecutó el control determinístico
+`github-branch-head`, se persistió Evidence y se creó el checkpoint real:
+
+`bcf9f235-35d5-4270-bbbe-95f2f6644558`
+
+Ese checkpoint contenía como `nextAction` explícito continuar en Session B con
+la evaluación de continuidad contra la Session actual.
+
+Después de crear el checkpoint, Session A fue eliminada físicamente. El
+checkpoint y su procedencia sobrevivieron.
+
+#### Session B
+
+Session:
+
+`9f683726-936a-4b0c-b700-c544a528fa40`
+
+Session B se creó con el mismo Work Item activo y quedó vinculada
+automáticamente al mismo trabajo.
+
+El resume real del checkpoint devolvió:
+
+```
+state = same_state
+reasons = []
+stateMatchConfirmed = true
+requiresStateRevalidation = false
+```
+
+Session B continuó desde el `nextAction` durable y agregó:
+
+- acción `Comprobar estado con este chat`;
+- evaluación real mediante
+  `POST /api/operational-integrity/checkpoints/:id/resume`;
+- representación operator-facing de:
+  - `same_state` → Estado compatible;
+  - `changed_state` → Estado cambió;
+  - `unknown` → Estado no verificable;
+- reasons y HEAD observado;
+- invalidación visual del resultado cuando cambia la Session actual.
+
+Workflow que ejecutó el handoff real:
+
+- run `36012629603` — PASS.
+
+#### Integración
+
+PR:
+
+`#17 — feat(tasks): add checkpoint continuity operator surface`
+
+SHA integrado en `main`:
+
+`df6f7eb3e332dc3ab57f931f11d950bde79e8cb1`
+
+Controles sobre el SHA exacto integrado:
+
+- GitHub Actions run `36013303860`: TypeScript PASS + Next.js build PASS;
+- Vercel: deployment `success`.
+
+Después de confirmar integración se ejecutó un segundo control
+`github-branch-head` sobre `main`, con Evidence:
+
+`cf8b6ec4-1b74-4775-9587-54ee7790bdd7`
+
+El Work Item se marcó `completed` y Session B creó el checkpoint final:
+
+`87d41219-459e-4275-ad60-be0d602ef663`
+
+El checkpoint final quedó ligado exactamente a:
+
+```
+branch = main
+repo_head_sha = df6f7eb3e332dc3ab57f931f11d950bde79e8cb1
+work_item_snapshot.status = completed
+```
+
+Después se limpió el Active Work Item.
+
+Workflow de cierre:
+
+- run `36013452749` — PASS;
+- job `107679775613`;
+- artifact `real-checkpoint-handoff-completion`;
+- artifact ID `10813822068`;
+- digest
+  `sha256:9f3e97b0944c8948b59a01c00e347127fd80778d983c2d4688ed6d43b4f1efe1`.
+
+Persistencia final auditada:
+
+- Work Item: `completed`;
+- Active Work Item: `null`;
+- Session A: eliminada;
+- Session B: existente y ligada al Work Item;
+- checkpoints: 2;
+- handoffs: 1 (`same_state`);
+- Evidence records del Work Item: 2;
+- `WorkCheckpointCreated`: 2;
+- `WorkHandoffEvaluated`: 1.
+
 ### Estado de ADR-013
 
-El vertical slice cumple los diez criterios técnicos definidos arriba y queda
-**runtime-validated dentro de su estado EXPERIMENTAL**.
+ADR-013 pasa a **ACTIVE**.
 
-No se promueve todavía a una regla global del Governance Canon. La siguiente
-prueba útil ya no es otro fixture: es utilizar Checkpoint + Handoff durante un
-bloque real de desarrollo que atraviese una Session A y una Session B. Sólo
-después de esa experiencia conviene decidir si la primitive se estabiliza como
-Pattern/ADR canónico o requiere otra revisión.
+La promoción no se basa sólo en que el código compile ni en un fixture aislado.
+La primitive completó las tres capas de evidencia requeridas:
+
+```
+IMPLEMENTED
+→ RUNTIME VALIDATED
+→ USED IN REAL DEVELOPMENT ACROSS SESSION A → SESSION B
+```
+
+El caso real demostró que el trabajo pudo sobrevivir a la eliminación de la
+Session origen, ser retomado desde estado durable, comprobar compatibilidad
+contra fuentes estructurales y continuar hasta PR, CI, deployment e integración
+sin reconstruir el transcript anterior como fuente de verdad.
+
+#### Alcance ACTIVE
+
+Quedan activos como contrato v1:
+
+- checkpoint durable ligado a Work Item + Session origen + estado Git;
+- Evidence explícita separada de narrativa;
+- handoff a otra Session;
+- estados `same_state`, `changed_state`, `unknown`;
+- fail-safe cuando no puede observarse GitHub;
+- reparación event-first;
+- operator surface para inspección y evaluación manual de continuidad.
+
+No forman parte de ADR-013 ACTIVE:
+
+- auto-checkpointing;
+- inyección automática de checkpoints en prompts;
+- promoción automática de narrativa a Evidence;
+- resolución automática de drift;
+- ejecución autónoma de `nextAction`;
+- conversión de un único handoff exitoso en una regla universal para todos los
+  proyectos/harnesses.
+
+Las futuras extensiones deben acumular Evidence antes de ampliar este contrato.
