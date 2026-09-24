@@ -1,4 +1,4 @@
-name: Real Checkpoint Handoff Midpoint
+name: Real Checkpoint Handoff Completion
 
 on:
   push:
@@ -6,128 +6,132 @@ on:
       - "test/checkpoint-handoff-prod-e2e"
 
 jobs:
-  checkpoint-and-resume:
+  complete-real-work:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       BASE_URL: https://spk-multidev.vercel.app
       PROJECT_ID: 2dace320-6a73-44ae-8b47-80797d739d9f
       WORK_ITEM_ID: 94ccbd00-4ad0-4261-9f17-0bec45e6956f
-      SESSION_A: efa4fcc6-8277-47c3-a5cf-a4f3bef0479d
-      DEV_BRANCH: feature/checkpoint-operator-continuity-v1
-      DEV_SHA: 7a48089bc7ef30fdef08ff8cf48cfdd0c920cd8d
+      SESSION_B: 9f683726-936a-4b0c-b700-c544a528fa40
+      INTEGRATED_MAIN_SHA: df6f7eb3e332dc3ab57f931f11d950bde79e8cb1
 
     steps:
-      - name: Record deterministic branch-head Evidence
+      - name: Record integrated main Evidence
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","workItemId":"'"$WORK_ITEM_ID"'","sessionId":"'"$SESSION_A"'","branch":"'"$DEV_BRANCH"'","expectedSha":"'"$DEV_SHA"'"}'             "$BASE_URL/api/operational-integrity/controls/github-branch-head" > control.json
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","workItemId":"'"$WORK_ITEM_ID"'","sessionId":"'"$SESSION_B"'","branch":"main","expectedSha":"'"$INTEGRATED_MAIN_SHA"'"}'             "$BASE_URL/api/operational-integrity/controls/github-branch-head" > integrated-control.json
 
           EVIDENCE_ID=$(python3 - <<'PY'
-          import json
-          d=json.load(open("control.json"))
+          import json, os
+          d=json.load(open("integrated-control.json"))
           assert d["controlExecuted"] is True, d
           assert d["controlPassed"] is True, d
           assert d["evidencePersisted"] is True, d
-          assert d["actualSha"] == "7a48089bc7ef30fdef08ff8cf48cfdd0c920cd8d", d
+          assert d["actualSha"] == os.environ["INTEGRATED_MAIN_SHA"], d
           print(d["evidence"]["id"])
           PY
           )
           echo "EVIDENCE_ID=$EVIDENCE_ID" >> "$GITHUB_ENV"
-          echo "EVIDENCE_ID $EVIDENCE_ID"
+          echo "INTEGRATED_EVIDENCE $EVIDENCE_ID"
 
-      - name: Create real checkpoint from Session A
+      - name: Complete real Work Item
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","sourceSessionId":"'"$SESSION_A"'","branch":"'"$DEV_BRANCH"'","completed":["Created read-only TaskContinuityPanel","Integrated checkpoint loading into TasksDrawer","Preserved distinction between checkpoint narrative and Evidence"],"modifiedFiles":["components/TaskContinuityPanel.tsx","components/TasksDrawer.tsx"],"failedAttempts":[],"blockers":[],"pendingDecisions":["Add current-Session resume evaluation controls","Map same_state / changed_state / unknown to operator-facing status"],"nextAction":"In Session B, resume this checkpoint and add an operator action that evaluates continuity against the current Session.","notes":"First real development checkpoint for ADR-013. Session A stops after the read-only continuity surface.","evidenceIds":["'"$EVIDENCE_ID"'"]}'             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints" > checkpoint.json
+          curl --fail --silent --show-error --location             -X PATCH             -H 'content-type: application/json'             -d '{"status":"completed"}'             "$BASE_URL/api/tasks/$WORK_ITEM_ID" > completed-task.json
 
-          CHECKPOINT_ID=$(python3 - <<'PY'
+          python3 - <<'PY'
+          import json
+          d=json.load(open("completed-task.json"))
+          assert d["task"]["status"] == "completed", d
+          assert d["task"]["completed_at"] is not None, d
+          print("WORK_ITEM_COMPLETED", d["task"]["id"])
+          PY
+
+      - name: Create final integrated checkpoint from Session B
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","sourceSessionId":"'"$SESSION_B"'","branch":"main","completed":["Session A implemented the read-only checkpoint continuity surface","Session A created a durable checkpoint with deterministic Evidence","Session B resumed the checkpoint as same_state","Session B continued from the checkpoint nextAction","Operator continuity surface now evaluates same_state, changed_state and unknown against the current Session","PR #17 merged into main","Exact integrated main passed TypeScript, Next.js build and Vercel deployment"],"modifiedFiles":["app/page.tsx","components/TaskContinuityPanel.tsx","components/TasksDrawer.tsx"],"failedAttempts":[],"blockers":[],"pendingDecisions":["Observe the primitive during future real work before broadening automation or auto-injection"],"nextAction":"Use Checkpoint + Handoff on subsequent real development work and review accumulated evidence before promoting or extending the primitive.","notes":"Final checkpoint for the first real ADR-013 development handoff. The Work Item is completed and the implementation is integrated on main.","evidenceIds":["'"$EVIDENCE_ID"'"]}'             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints" > final-checkpoint.json
+
+          FINAL_CHECKPOINT_ID=$(python3 - <<'PY'
           import json, os
-          d=json.load(open("checkpoint.json"))
+          d=json.load(open("final-checkpoint.json"))
           cp=d["checkpoint"]
           assert cp["work_item_id"] == os.environ["WORK_ITEM_ID"], d
-          assert cp["source_session_id"] == os.environ["SESSION_A"], d
-          assert cp["repo_head_sha"] == os.environ["DEV_SHA"], d
+          assert cp["source_session_id"] == os.environ["SESSION_B"], d
+          assert cp["branch"] == "main", d
+          assert cp["repo_head_sha"] == os.environ["INTEGRATED_MAIN_SHA"], d
           assert os.environ["EVIDENCE_ID"] in cp["evidenceIds"], d
+          assert cp["work_item_snapshot"]["status"] == "completed", d
           print(cp["id"])
           PY
           )
-          echo "CHECKPOINT_ID=$CHECKPOINT_ID" >> "$GITHUB_ENV"
-          echo "CHECKPOINT_ID $CHECKPOINT_ID"
+          echo "FINAL_CHECKPOINT_ID=$FINAL_CHECKPOINT_ID" >> "$GITHUB_ENV"
+          echo "FINAL_CHECKPOINT $FINAL_CHECKPOINT_ID"
 
-      - name: End Session A
+      - name: Clear active Work Item
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location -X DELETE             "$BASE_URL/api/sessions/$SESSION_A" > delete-a.json
+          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'","taskId":null}'             "$BASE_URL/api/active-task" > active-cleared.json
+
           python3 - <<'PY'
           import json
-          d=json.load(open("delete-a.json"))
-          assert d["ok"] is True, d
-          print("SESSION_A_DELETED")
+          d=json.load(open("active-cleared.json"))
+          assert d.get("activeTask") is None, d
+          print("ACTIVE_WORK_ITEM_CLEARED")
           PY
 
-      - name: Create Session B
+      - name: Verify final API state
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"projectId":"'"$PROJECT_ID"'"}'             "$BASE_URL/api/sessions" > session-b.json
-
-          SESSION_B=$(python3 - <<'PY'
-          import json, os
-          d=json.load(open("session-b.json"))
-          assert d["integrity"]["workItemId"] == os.environ["WORK_ITEM_ID"], d
-          assert d["integrity"]["workItemLink"] == "linked", d
-          print(d["session"]["id"])
-          PY
-          )
-          echo "SESSION_B=$SESSION_B" >> "$GITHUB_ENV"
-          echo "SESSION_B $SESSION_B"
-
-      - name: Resume checkpoint in Session B
-        run: |
-          set -euo pipefail
-          curl --fail --silent --show-error --location             -H 'content-type: application/json'             -d '{"targetSessionId":"'"$SESSION_B"'"}'             "$BASE_URL/api/operational-integrity/checkpoints/$CHECKPOINT_ID/resume" > resume.json
+          curl --fail --silent --show-error --location             "$BASE_URL/api/tasks/$WORK_ITEM_ID" > task-final.json
+          curl --fail --silent --show-error --location             "$BASE_URL/api/operational-integrity/work-items/$WORK_ITEM_ID/checkpoints?limit=10" > checkpoints-final.json
+          curl --fail --silent --show-error --location             "$BASE_URL/api/active-task?projectId=$PROJECT_ID" > active-final.json
 
           python3 - <<'PY'
           import json, os
-          d=json.load(open("resume.json"))
-          assert d["handoff"]["state"] == "same_state", d
-          assert d["stateMatchConfirmed"] is True, d
-          assert d["requiresStateRevalidation"] is False, d
-          assert d["handoff"]["target_session_id"] == os.environ["SESSION_B"], d
-          assert d["checkpoint"]["repo_head_sha"] == os.environ["DEV_SHA"], d
-          assert d["checkpoint"]["declared_state"]["nextAction"].startswith("In Session B"), d
-          print("HANDOFF", d["handoff"]["state"])
-          print("NEXT_ACTION", d["checkpoint"]["declared_state"]["nextAction"])
+          task=json.load(open("task-final.json"))["task"]
+          cps=json.load(open("checkpoints-final.json"))["checkpoints"]
+          active=json.load(open("active-final.json"))
+          assert task["status"] == "completed", task
+          assert any(
+            cp["id"] == os.environ["FINAL_CHECKPOINT_ID"]
+            and cp["repo_head_sha"] == os.environ["INTEGRATED_MAIN_SHA"]
+            and cp["work_item_snapshot"]["status"] == "completed"
+            for cp in cps
+          ), cps
+          assert active.get("activeTask") is None, active
+          print("FINAL_STATE_VERIFIED", len(cps))
           PY
 
-      - name: Persist handoff identifiers
+      - name: Persist completion evidence
         run: |
           python3 - <<'PY'
           import json, os
           out={
             "projectId": os.environ["PROJECT_ID"],
             "workItemId": os.environ["WORK_ITEM_ID"],
-            "sessionA": os.environ["SESSION_A"],
             "sessionB": os.environ["SESSION_B"],
-            "checkpointId": os.environ["CHECKPOINT_ID"],
-            "evidenceId": os.environ["EVIDENCE_ID"],
-            "repoHeadSha": os.environ["DEV_SHA"],
-            "developmentBranch": os.environ["DEV_BRANCH"],
-            "resumeState": json.load(open("resume.json"))["handoff"]["state"],
-            "nextAction": json.load(open("checkpoint.json"))["checkpoint"]["declared_state"]["nextAction"],
+            "integratedMainSha": os.environ["INTEGRATED_MAIN_SHA"],
+            "integratedEvidenceId": os.environ["EVIDENCE_ID"],
+            "finalCheckpointId": os.environ["FINAL_CHECKPOINT_ID"],
+            "taskStatus": "completed",
+            "activeTaskCleared": True,
           }
-          open("real-handoff-midpoint.json","w").write(json.dumps(out,indent=2))
+          open("real-handoff-completion.json","w").write(json.dumps(out,indent=2))
           print(json.dumps(out))
           PY
 
-      - name: Upload handoff evidence
+      - name: Upload completion evidence
         uses: actions/upload-artifact@v4
         with:
-          name: real-checkpoint-handoff-midpoint
+          name: real-checkpoint-handoff-completion
           path: |
-            control.json
-            checkpoint.json
-            delete-a.json
-            session-b.json
-            resume.json
-            real-handoff-midpoint.json
+            integrated-control.json
+            completed-task.json
+            final-checkpoint.json
+            active-cleared.json
+            task-final.json
+            checkpoints-final.json
+            active-final.json
+            real-handoff-completion.json
