@@ -124,6 +124,12 @@ export function TasksDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, projectId]);
 
+  // La evaluación pertenece a una Session concreta. Si el usuario cambia de
+  // chat, el resultado anterior ya no describe la Session actual.
+  useEffect(() => {
+    setCheckpointEvaluation(null);
+  }, [currentSessionId]);
+
   async function handleCreate() {
     if (!projectId || !newTitle.trim()) return;
     setCreating(true);
