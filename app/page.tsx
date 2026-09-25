@@ -453,7 +453,12 @@ export default function HomePage() {
         panelId: panel,
         activeTaskId: budgetedBundle.activeTask?.id ?? null,
         activeTaskTitle: budgetedBundle.activeTask?.title ?? null,
-        includedKnowledge: classifiedKnowledge.map((k) => ({ id: k.id, title: k.title })),
+        includedKnowledge: classifiedKnowledge.map((k) => ({
+          id: k.id,
+          title: k.title,
+          tier: k.tier,
+          influenceRole: k.influenceRole,
+        })),
         omittedKnowledge: [...omittedKnowledgeByBudget, ...omittedByClassification],
         budgetOmissions: omittedByBudget
           .filter((o) => o.type !== "knowledge")
