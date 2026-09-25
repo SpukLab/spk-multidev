@@ -39,6 +39,9 @@ jobs:
       - name: PATTERN-001 advisory-context boundary
         run: npm run test:pattern001
 
+      - name: ADR-010 worktree reconciliation stress
+        run: npm run test:reconciliation
+
       - name: PATTERN-001 deployed model runtime E2E
         if: github.event_name == 'pull_request' && github.head_ref == 'experiment/pattern-001-model-runtime-e2e'
         run: node scripts/pattern001-runtime-e2e.cjs
