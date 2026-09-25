@@ -9,7 +9,7 @@
     "lint": "next lint",
     "test:pattern001": "node -e \"require('fs').rmSync('.pattern001-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.pattern001.json && node --test .pattern001-test-dist/tests/pattern001-context-boundary.test.js",
     "test:reconciliation": "node scripts/worktree-reconciliation-stress.cjs",
-    "test:pattern002": "node -e \"require('fs').rmSync('.pattern002-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.pattern002.json && node scripts/pattern002-replay.cjs && node scripts/pattern002-replay-drift-test.cjs"
+    "test:pattern002": "node -e \"require('fs').rmSync('.pattern002-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.pattern002.json && node scripts/pattern002-replay.cjs && node scripts/pattern002-replay-drift-test.cjs && node scripts/pattern002-fixture-update-test.cjs"
   },
   "dependencies": {
     "next": "14.2.35",
