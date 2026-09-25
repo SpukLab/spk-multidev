@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test:pattern001": "node -e \"require('fs').rmSync('.pattern001-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.pattern001.json && node --test .pattern001-test-dist/tests/pattern001-context-boundary.test.js"
+    "test:pattern001": "node -e \"require('fs').rmSync('.pattern001-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.pattern001.json && node --test .pattern001-test-dist/tests/pattern001-context-boundary.test.js",
+    "test:reconciliation": "node scripts/worktree-reconciliation-stress.cjs"
   },
   "dependencies": {
     "next": "14.2.35",
