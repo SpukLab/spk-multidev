@@ -36,5 +36,8 @@ jobs:
       - name: TypeScript
         run: npx tsc --noEmit
 
+      - name: PATTERN-001 advisory-context boundary
+        run: npm run test:pattern001
+
       - name: Next.js build
         run: npm run build
