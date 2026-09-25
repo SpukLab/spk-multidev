@@ -1483,6 +1483,36 @@ pero debe revalidarse antes de tratarlo como estado actual.
 
 `unknown` nunca se convierte implícitamente en éxito.
 
+#### Scope boundary — Checkpoint resume ≠ Effect resume
+
+ADR-013 v1 recupera **estado del Work Item / repositorio entre Sessions**. No
+implementa un journal transaccional de side effects individuales y no debe
+interpretarse como una garantía de exactly-once.
+
+En particular, un checkpoint puede declarar que una acción fue completada, pero
+esa declaración no crea por sí sola la cadena durable:
+
+`AUTHORIZED → INTENT RECORDED → EFFECT ATTEMPTED → TERMINAL/RECEIPT`
+
+Por lo tanto ADR-013 v1 no decide si, ante un crash ocurrido alrededor de un
+efecto externo:
+
+- el efecto nunca empezó;
+- ocurrió pero no llegó a registrarse el resultado;
+- falló antes de hacerse visible;
+- fue aplicado exactamente una vez;
+- es seguro reintentarlo.
+
+La recuperación de esa ambigüedad pertenece a una futura capa de execution/effect
+reconciliation. Hasta entonces:
+
+`CHECKPOINT RESUME ≠ EFFECT RESUME`
+
+`NO TERMINAL RECORD ≠ EFFECT DID NOT OCCUR`
+
+y cualquier efecto externo incierto debe revalidarse contra estado autoritativo
+antes de un retry que pudiera duplicarlo.
+
 ### Persistencia
 
 Migración: `supabase/schema_checkpoint_handoff_v1.sql`.
