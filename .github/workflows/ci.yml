@@ -45,6 +45,9 @@ jobs:
       - name: PATTERN-002 deterministic replay gate
         run: npm run test:pattern002
 
+      - name: ADR-010 verifier-integrity boundary
+        run: npm run test:verifier-integrity
+
       - name: PATTERN-001 deployed model runtime E2E
         if: github.event_name == 'pull_request' && github.head_ref == 'experiment/pattern-001-model-runtime-e2e'
         run: node scripts/pattern001-runtime-e2e.cjs
