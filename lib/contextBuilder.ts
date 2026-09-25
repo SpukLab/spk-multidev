@@ -54,6 +54,12 @@ export interface ContextBundle {
       // de buildPromptSections(), nunca de buildContext(). El Builder
       // responde "qué existe", no "qué conviene mostrar".
       status: "captured" | "promoted";
+      /**
+       * PATTERN-001 experiment: recalled Knowledge is context, not an
+       * instruction/permission channel. "promoted" affects reuse/priority,
+       * never operational authority by itself.
+       */
+      influenceRole: "advisory";
       taskId: string | null;
     }>
   >;
@@ -149,6 +155,7 @@ export function buildContext(params: BuildContextParams): ContextBundle {
         title: k.title,
         content: k.content,
         status: k.status as "captured" | "promoted",
+        influenceRole: "advisory" as const,
         taskId: k.task_id,
       })),
     projectCanon:
