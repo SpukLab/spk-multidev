@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".pattern002-test-dist",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "incremental": false,
+    "declaration": false,
+    "sourceMap": false,
+    "allowJs": false,
+    "types": ["node"]
+  },
+  "include": [
+    "lib/contextBuilder.ts",
+    "lib/contextBudget.ts",
+    "lib/promptSections.ts",
+    "lib/promptAssembler.ts"
+  ]
+}
