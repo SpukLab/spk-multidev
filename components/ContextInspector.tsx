@@ -8,7 +8,12 @@ interface ContextBuiltPayload {
   panelId: string;
   activeTaskId: string | null;
   activeTaskTitle: string | null;
-  includedKnowledge: Array<{ id: string; title: string }>;
+  includedKnowledge: Array<{
+    id: string;
+    title: string;
+    tier?: string;
+    influenceRole?: "advisory";
+  }>;
   omittedKnowledge: Array<{ id: string; title: string; reason?: "not-relevant" | "budget" }>;
   budgetOmissions?: Array<{ type: string; title: string }>;
   conversationPairs: number;
@@ -142,7 +147,12 @@ export function ContextInspector({
               <div style={{ color: "#666" }}>ninguna</div>
             )}
             {payload.includedKnowledge.map((k) => (
-              <div key={k.id} style={{ color: "#4ade80" }}>✓ {k.title}</div>
+              <div key={k.id} style={{ color: "#4ade80" }}>
+                ✓ {k.title}
+                {k.influenceRole ? (
+                  <span style={{ color: "#888" }}> · {k.influenceRole}{k.tier ? ` · ${k.tier}` : ""}</span>
+                ) : null}
+              </div>
             ))}
             {payload.omittedKnowledge.map((k) => (
               <div key={k.id} style={{ color: "#666" }}>
