@@ -8,10 +8,8 @@ on:
     paths:
       - 'lib/observatory/**'
       - 'lib/db/knowledge.ts'
-      - 'lib/db/knowledge.ts'
       - 'fixtures/observatory/**'
       - 'scripts/validate-observatory*.mjs'
-      - 'scripts/validate-observatory-runtime-boundary.mjs'
       - 'scripts/validate-observatory-runtime-boundary.mjs'
       - 'supabase/candidates/**'
       - 'package.json'
@@ -20,8 +18,10 @@ on:
   pull_request:
     paths:
       - 'lib/observatory/**'
+      - 'lib/db/knowledge.ts'
       - 'fixtures/observatory/**'
       - 'scripts/validate-observatory*.mjs'
+      - 'scripts/validate-observatory-runtime-boundary.mjs'
       - 'supabase/candidates/**'
       - 'package.json'
       - 'package-lock.json'
