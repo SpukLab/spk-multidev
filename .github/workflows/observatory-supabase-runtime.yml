@@ -1,0 +1,160 @@
+name: Observatory Supabase runtime E2E
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/observatory-supabase-runtime-e2e
+    paths:
+      - 'app/api/knowledge/**'
+      - 'lib/db/knowledge.ts'
+      - 'scripts/validate-observatory-supabase-runtime.mjs'
+      - 'supabase/candidates/observatory_v1_candidate.sql'
+      - 'supabase/migrations/**'
+      - '.github/workflows/observatory-supabase-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  supabase-runtime-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_TELEMETRY_DISABLED: '1'
+      OBS_PROJECT_ID: '11111111-1111-4111-8111-111111111111'
+      OBS_AGENT_ID: '22222222-2222-4222-8222-222222222222'
+      OBS_ENTITY_ID: '33333333-3333-4333-8333-333333333333'
+      OBS_LEGACY_KNOWLEDGE_ID: '44444444-4444-4444-8444-444444444444'
+      OBS_CANONICAL_KNOWLEDGE_ID: '55555555-5555-4555-8555-555555555555'
+
+    steps:
+      - name: Checkout exact candidate stack
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install application dependencies
+        run: npm ci
+
+      - name: Discover pinned Supabase CLI surface
+        run: |
+          npx --yes supabase@2.118.0 --version
+          npx --yes supabase@2.118.0 init --help >/dev/null
+          npx --yes supabase@2.118.0 start --help >/dev/null
+          npx --yes supabase@2.118.0 status --help >/dev/null
+
+      - name: Initialize disposable Supabase project
+        run: |
+          test ! -f supabase/config.toml
+          npx --yes supabase@2.118.0 init
+          test -f supabase/config.toml
+
+      - name: Start full local Supabase stack
+        run: npx --yes supabase@2.118.0 start
+
+      - name: Export disposable runtime coordinates
+        run: |
+          npx --yes supabase@2.118.0 status --output env             --override-name api.url=NEXT_PUBLIC_SUPABASE_URL             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY             > /tmp/supabase.env
+          grep -E '^(DB_URL|NEXT_PUBLIC_SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY)=' /tmp/supabase.env >> "$GITHUB_ENV"
+          test "$(grep -c '^DB_URL=' /tmp/supabase.env)" -eq 1
+          test "$(grep -c '^NEXT_PUBLIC_SUPABASE_URL=' /tmp/supabase.env)" -eq 1
+          test "$(grep -c '^SUPABASE_SERVICE_ROLE_KEY=' /tmp/supabase.env)" -eq 1
+
+      - name: Apply Observatory candidate only to disposable database
+        run: |
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1             -f supabase/candidates/observatory_v1_candidate.sql
+
+      - name: Seed legacy and canonical isolation probes
+        run: |
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 <<SQL
+          insert into projects (id, name, github_owner, github_repo)
+          values ('$OBS_PROJECT_ID', 'Observatory E2E', 'SpukLab', 'spk-multidev');
+
+          insert into agents (id, kind, name, version)
+          values ('$OBS_AGENT_ID', 'system_process', 'observatory-e2e', '1');
+
+          insert into entities (
+            id, project_id, type, role, lifecycle_state, created_by_agent_id
+          ) values (
+            '$OBS_ENTITY_ID', '$OBS_PROJECT_ID', 'research_run', 'probe', 'active', '$OBS_AGENT_ID'
+          );
+
+          insert into knowledge_items (
+            id, project_id, type, title, content, status
+          ) values (
+            '$OBS_LEGACY_KNOWLEDGE_ID', '$OBS_PROJECT_ID', 'observation',
+            'legacy-visible', 'legacy content', 'captured'
+          );
+
+          insert into events (
+            event_id, project_id, entity_id, event_type, actor, source, payload
+          ) values (
+            '66666666-6666-4666-8666-666666666666',
+            '$OBS_PROJECT_ID', '$OBS_LEGACY_KNOWLEDGE_ID',
+            'LegacyProbe', 'system', 'e2e', '{}'::jsonb
+          );
+
+          insert into knowledge_items (
+            id, project_id, type, title, content, status,
+            subject_entity_id, canonical_kind, epistemic_stage, canonical_payload,
+            producer_agent_id, producer_agent_version, evidence_ids,
+            epistemic_confidence, research_run_id
+          ) values (
+            '$OBS_CANONICAL_KNOWLEDGE_ID', '$OBS_PROJECT_ID', 'observation',
+            'canonical-hidden', 'canonical content', 'promoted',
+            '$OBS_ENTITY_ID', 'finding', 'validated', '{"probe":true}'::jsonb,
+            '$OBS_AGENT_ID', '1', '{}'::uuid[], 0.9, '$OBS_ENTITY_ID'
+          );
+
+          insert into events (
+            event_id, project_id, entity_id, event_type, actor, source, payload,
+            producer_agent_id, research_run_id, context_fingerprint
+          ) values (
+            '77777777-7777-4777-8777-777777777777',
+            '$OBS_PROJECT_ID', '$OBS_LEGACY_KNOWLEDGE_ID',
+            'CanonicalLineageProbe', 'system', 'e2e', '{}'::jsonb,
+            '$OBS_AGENT_ID', '$OBS_ENTITY_ID', 'canonical-probe'
+          );
+          SQL
+
+      - name: Validate logical Realtime baseline after candidate
+        run: |
+          test "$(psql "$DB_URL" -X -Atqc "show wal_level")" = "logical"
+          ACTUAL="$(psql "$DB_URL" -X -Atqc "
+            select string_agg(format('%I.%I', schemaname, tablename), ',' order by schemaname, tablename)
+            from pg_publication_tables
+            where pubname='supabase_realtime';
+          ")"
+          test "$ACTUAL" = "public.agent_job_events,public.agent_jobs"
+          echo "PASS wal_level=logical"
+          echo "PASS supabase_realtime membership unchanged"
+
+      - name: Start Next.js against disposable Supabase
+        run: |
+          npm run dev > /tmp/next.log 2>&1 &
+          echo $! > /tmp/next.pid
+          for i in $(seq 1 60); do
+            code="$(curl -s -o /tmp/ready.json -w '%{http_code}'               "http://127.0.0.1:3000/api/knowledge?projectId=$OBS_PROJECT_ID" || true)"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/next.log
+          exit 1
+
+      - name: Validate real API isolation and Realtime delivery
+        run: node scripts/validate-observatory-supabase-runtime.mjs
+
+      - name: Dump Next.js log on failure
+        if: failure()
+        run: cat /tmp/next.log || true
+
+      - name: Stop disposable Supabase
+        if: always()
+        run: |
+          if [ -f /tmp/next.pid ]; then kill "$(cat /tmp/next.pid)" || true; fi
+          npx --yes supabase@2.118.0 stop --no-backup || true
