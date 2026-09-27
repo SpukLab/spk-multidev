@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
 const apiUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;\nconst serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.APP_URL ?? "http://127.0.0.1:3000";
 const projectId = process.env.OBS_PROJECT_ID;
 const legacyId = process.env.OBS_LEGACY_KNOWLEDGE_ID;
@@ -74,40 +74,61 @@ if (canonical.response.status !== 404) {
   throw new Error(`canonical Knowledge should be hidden from legacy API; got HTTP ${canonical.response.status}`);
 }
 
-const supabase = createClient(apiUrl, serviceRoleKey, {
+const realtimeClient = createClient(apiUrl, publicKey, {
   auth: { persistSession: false, autoRefreshToken: false },
   realtime: { params: { eventsPerSecond: 10 } },
 });
+const adminClient = createClient(apiUrl, serviceRoleKey, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
 
 const realtimeId = crypto.randomUUID();
+const channelStatuses = [];
+let inserted = false;
 let timer;
+
 const eventPromise = new Promise((resolve, reject) => {
-  timer = setTimeout(() => reject(new Error("Realtime event timeout")), 15000);
-  const channel = supabase
+  timer = setTimeout(async () => {
+    const { data, error } = await adminClient
+      .from("agent_jobs")
+      .select("id")
+      .eq("id", realtimeId)
+      .maybeSingle();
+    reject(new Error(`Realtime event timeout; statuses=${channelStatuses.join(",") || "none"}; probeRow=${data?.id ?? "missing"}; lookupError=${error?.message ?? "none"}`));
+  }, 30000);
+
+  const channel = realtimeClient
     .channel("observatory-runtime-e2e")
-    .on(
-      "postgres_changes",
-      { event: "INSERT", schema: "public", table: "agent_jobs" },
-      (payload) => {
-        if (payload.new?.id === realtimeId) resolve({ channel, payload });
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "agent_jobs" }, (payload) => {
+      console.log(`Realtime postgres_changes payload id=${payload.new?.id ?? "missing"}`);
+      if (payload.new?.id === realtimeId) resolve({ channel, payload });
+    })
+    .subscribe(async (status, error) => {
+      channelStatuses.push(status);
+      console.log(`Realtime channel status=${status}${error ? ` error=${error.message ?? error}` : ""}`);
+      if (status === "SUBSCRIBED" && !inserted) {
+        inserted = true;
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 750));
+        const { error: insertError } = await adminClient.from("agent_jobs").insert({
+          id: realtimeId,
+          task_description: "observatory realtime probe",
+          repo_owner: "SpukLab",
+          repo_name: "spk-multidev",
+          branch: "runtime-e2e",
+        });
+        if (insertError) reject(new Error(`Realtime probe insert failed: ${insertError.message}`));
+        else console.log(`Realtime probe inserted id=${realtimeId}`);
+        return;
       }
-    )
-    .subscribe(async (status) => {
-      if (status !== "SUBSCRIBED") return;
-      const { error } = await supabase.from("agent_jobs").insert({
-        id: realtimeId,
-        task_description: "observatory realtime probe",
-        repo_owner: "SpukLab",
-        repo_name: "spk-multidev",
-        branch: "runtime-e2e",
-      });
-      if (error) reject(new Error(`Realtime probe insert failed: ${error.message}`));
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        reject(new Error(`Realtime subscription failed: status=${status}; error=${error?.message ?? "none"}`));
+      }
     });
 });
 
 const { channel } = await eventPromise;
 clearTimeout(timer);
-await supabase.removeChannel(channel);
+await realtimeClient.removeChannel(channel);
 
 console.log("PASS legacy Next.js API hides canonical Knowledge");
 console.log("PASS legacy event history hides canonical lineage");
