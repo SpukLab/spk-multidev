@@ -1,8 +1,10 @@
+import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 
 const apiUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const dbUrl = process.env.DB_URL;
 const appUrl = process.env.APP_URL ?? "http://127.0.0.1:3000";
 const projectId = process.env.OBS_PROJECT_ID;
 const legacyId = process.env.OBS_LEGACY_KNOWLEDGE_ID;
@@ -12,6 +14,7 @@ for (const [name, value] of Object.entries({
   NEXT_PUBLIC_SUPABASE_URL: apiUrl,
   NEXT_PUBLIC_SUPABASE_ANON_KEY: publicKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
+  DB_URL: dbUrl,
   OBS_PROJECT_ID: projectId,
   OBS_LEGACY_KNOWLEDGE_ID: legacyId,
   OBS_CANONICAL_KNOWLEDGE_ID: canonicalId,
@@ -84,6 +87,10 @@ const adminClient = createClient(apiUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+function sql(query) {
+  return execFileSync("psql", [dbUrl, "-X", "-Atqc", query], { encoding: "utf8" }).trim();
+}
+
 const realtimeId = crypto.randomUUID();
 const channelStatuses = [];
 let inserted = false;
@@ -100,7 +107,9 @@ const eventPromise = new Promise((resolve, reject) => {
   }, 30000);
 
   const channel = realtimeClient
-    .channel("observatory-runtime-e2e")
+    .channel("observatory-runtime-e2e", {
+      config: { postgres_changes_options: { wait: true, timeout: 15000 } },
+    })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "agent_jobs" }, (payload) => {
       console.log(`Realtime postgres_changes payload id=${payload.new?.id ?? "missing"}`);
       if (payload.new?.id === realtimeId) resolve({ channel, payload });
@@ -110,6 +119,10 @@ const eventPromise = new Promise((resolve, reject) => {
       console.log(`Realtime channel status=${status}${error ? ` error=${error.message ?? error}` : ""}`);
       if (status === "SUBSCRIBED" && !inserted) {
         inserted = true;
+        const subscriptionCount = sql("select count(*) from realtime.subscription");
+        const replicationSlots = sql("select coalesce(string_agg(slot_name || ':' || active::text, ',' order by slot_name), 'none') from pg_replication_slots where slot_name like 'supabase_realtime%';");
+        console.log(`Realtime registered subscriptions=${subscriptionCount}`);
+        console.log(`Realtime replication slots=${replicationSlots}`);
         await new Promise((resolveDelay) => setTimeout(resolveDelay, 750));
         const { error: insertError } = await adminClient.from("agent_jobs").insert({
           id: realtimeId,
@@ -118,8 +131,17 @@ const eventPromise = new Promise((resolve, reject) => {
           repo_name: "spk-multidev",
           branch: "runtime-e2e",
         });
-        if (insertError) reject(new Error(`Realtime probe insert failed: ${insertError.message}`));
-        else console.log(`Realtime probe inserted id=${realtimeId}`);
+        if (insertError) {
+          reject(new Error(`Realtime probe insert failed: ${insertError.message}`));
+          return;
+        }
+        console.log(`Realtime probe inserted id=${realtimeId}`);
+        const { data: publicRow, error: publicReadError } = await realtimeClient
+          .from("agent_jobs")
+          .select("id")
+          .eq("id", realtimeId)
+          .maybeSingle();
+        console.log(`Realtime public read id=${publicRow?.id ?? "missing"} error=${publicReadError?.message ?? "none"}`);
         return;
       }
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {

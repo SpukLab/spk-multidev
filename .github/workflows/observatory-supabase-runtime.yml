@@ -41,6 +41,14 @@ jobs:
       - name: Install application dependencies
         run: npm ci
 
+      - name: Install isolated current Realtime probe client
+        run: |
+          mkdir -p /tmp/observatory-rt
+          cd /tmp/observatory-rt
+          npm init -y >/dev/null
+          npm install --no-save --package-lock=false @supabase/supabase-js@2.117.2
+          cp "$GITHUB_WORKSPACE/scripts/validate-observatory-supabase-runtime.mjs" ./probe.mjs
+
       - name: Discover pinned Supabase CLI surface
         run: |
           npx --yes supabase@2.118.0 --version
@@ -55,7 +63,7 @@ jobs:
           test -f supabase/config.toml
 
       - name: Start required local Supabase stack
-        run: npx --yes supabase@2.118.0 start -x inbucket
+        run: npx --yes supabase@2.118.0 start -x storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 
       - name: Export disposable runtime coordinates
         run: |
@@ -147,11 +155,18 @@ jobs:
           exit 1
 
       - name: Validate real API isolation and Realtime delivery
-        run: node scripts/validate-observatory-supabase-runtime.mjs
+        run: node /tmp/observatory-rt/probe.mjs
 
-      - name: Dump Next.js log on failure
+      - name: Dump runtime diagnostics on failure
         if: failure()
-        run: cat /tmp/next.log || true
+        run: |
+          cat /tmp/next.log || true
+          echo "--- Realtime registration ---"
+          psql "$DB_URL" -X -Atqc "select count(*) from realtime.subscription" || true
+          psql "$DB_URL" -X -Atqc "select slot_name, active from pg_replication_slots where slot_name like 'supabase_realtime%' order by slot_name" || true
+          echo "--- Realtime container logs ---"
+          RT_CONTAINER="$(docker ps -a --format '{{.Names}}' | grep '^supabase_realtime_' | head -n 1 || true)"
+          if [ -n "$RT_CONTAINER" ]; then docker logs --tail 300 "$RT_CONTAINER" || true; fi
 
       - name: Stop disposable Supabase
         if: always()
