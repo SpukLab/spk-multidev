@@ -165,11 +165,45 @@ grant select, insert, update, delete on table entities to service_role;
 grant select, insert, update, delete on table relationships to service_role;
 grant select, insert, update, delete on table transitions to service_role;
 
+-- Existing Knowledge/Event tables currently have broad Supabase default grants
+-- and permissive public-read RLS policies in production. Preserve the legacy
+-- read surface, but make Observatory canonical rows and research-lineage events
+-- server-only. Writes remain server-only and service_role access is explicit.
+revoke all on table knowledge_items from anon, authenticated;
+revoke all on table events from anon, authenticated;
+
+grant select on table knowledge_items to anon, authenticated;
+grant select on table events to anon, authenticated;
+
+grant select, insert, update, delete on table knowledge_items to service_role;
+grant select, insert, update, delete on table events to service_role;
+
+drop policy "public read knowledge_items" on knowledge_items;
+create policy "public read legacy knowledge_items"
+  on knowledge_items
+  for select
+  using (epistemic_stage is null);
+
+drop policy "public read events" on events;
+create policy "public read legacy events"
+  on events
+  for select
+  using (
+    producer_agent_id is null and
+    research_run_id is null and
+    context_fingerprint is null and
+    parent_event_id is null
+  );
+
 -- Intentionally unchanged in this candidate:
---   * existing public-read policies on events/tasks/knowledge_items
---   * legacy Knowledge status/confidence/type fields
+--   * legacy Knowledge status/confidence/type semantics
 --   * Event actor/source fields
---   * current UI/API behavior
+--   * existing Task/Active Task policies
+--   * current UI/API behavior for legacy rows
+--
+-- Before any runtime can write canonical Knowledge, legacy server APIs that
+-- use service_role must explicitly filter/project legacy rows to avoid leaking
+-- canonical records through application JSON responses.
 --
 -- Multi-tenant authorization requires its own explicit threat model and migration.
 
