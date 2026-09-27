@@ -53,6 +53,9 @@ export interface KnowledgeItem {
 
 export class KnowledgeTransitionError extends Error {}
 
+const LEGACY_KNOWLEDGE_COLUMNS =
+  "id,project_id,task_id,session_id,source_message_id,source_event_id,type,title,content,status,confidence,created_at,updated_at";
+
 export async function captureKnowledge(params: {
   projectId: string;
   taskId?: string | null;
@@ -126,7 +129,7 @@ export async function captureKnowledge(params: {
       created_at: now,
       updated_at: now,
     })
-    .select()
+    .select(LEGACY_KNOWLEDGE_COLUMNS)
     .single();
 
   if (error) throw error;
@@ -135,7 +138,12 @@ export async function captureKnowledge(params: {
 
 export async function getKnowledgeItem(id: string): Promise<KnowledgeItem | null> {
   const supabase = getSupabaseServerClient();
-  const { data, error } = await supabase.from("knowledge_items").select("*").eq("id", id).maybeSingle();
+  const { data, error } = await supabase
+    .from("knowledge_items")
+    .select(LEGACY_KNOWLEDGE_COLUMNS)
+    .eq("id", id)
+    .is("epistemic_stage", null)
+    .maybeSingle();
   if (error) throw error;
   return data as KnowledgeItem | null;
 }
@@ -145,7 +153,11 @@ export async function listKnowledgeForProject(
   filters?: { type?: KnowledgeType; status?: KnowledgeStatus }
 ): Promise<KnowledgeItem[]> {
   const supabase = getSupabaseServerClient();
-  let query = supabase.from("knowledge_items").select("*").eq("project_id", projectId);
+  let query = supabase
+    .from("knowledge_items")
+    .select(LEGACY_KNOWLEDGE_COLUMNS)
+    .eq("project_id", projectId)
+    .is("epistemic_stage", null);
   if (filters?.type) query = query.eq("type", filters.type);
   if (filters?.status) query = query.eq("status", filters.status);
   const { data, error } = await query.order("updated_at", { ascending: false });
@@ -196,7 +208,8 @@ export async function transitionKnowledge(
     .from("knowledge_items")
     .update({ status: toStatus, updated_at: now })
     .eq("id", id)
-    .select()
+    .is("epistemic_stage", null)
+    .select(LEGACY_KNOWLEDGE_COLUMNS)
     .single();
   if (error) throw error;
   return data as KnowledgeItem;
@@ -208,6 +221,10 @@ export async function getKnowledgeEventHistory(id: string) {
     .from("events")
     .select("event_type, timestamp, payload, actor, source")
     .eq("entity_id", id)
+    .is("producer_agent_id", null)
+    .is("research_run_id", null)
+    .is("context_fingerprint", null)
+    .is("parent_event_id", null)
     .order("timestamp", { ascending: true });
   if (error) throw error;
   return data ?? [];

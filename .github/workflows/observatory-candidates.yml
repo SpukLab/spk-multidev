@@ -7,8 +7,12 @@ on:
       - chore/observatory-v1-repo-only-candidates
     paths:
       - 'lib/observatory/**'
+      - 'lib/db/knowledge.ts'
+      - 'lib/db/knowledge.ts'
       - 'fixtures/observatory/**'
       - 'scripts/validate-observatory*.mjs'
+      - 'scripts/validate-observatory-runtime-boundary.mjs'
+      - 'scripts/validate-observatory-runtime-boundary.mjs'
       - 'supabase/candidates/**'
       - 'package.json'
       - 'package-lock.json'
@@ -60,3 +64,9 @@ jobs:
 
       - name: Validate Observatory candidates
         run: npm run validate:observatory
+
+      - name: Typecheck runtime legacy boundary
+        run: npx tsc --noEmit
+
+      - name: Validate runtime legacy boundary
+        run: node scripts/validate-observatory-runtime-boundary.mjs
