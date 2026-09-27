@@ -1,7 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 const apiUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;\nconst serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const appUrl = process.env.APP_URL ?? "http://127.0.0.1:3000";
 const projectId = process.env.OBS_PROJECT_ID;
 const legacyId = process.env.OBS_LEGACY_KNOWLEDGE_ID;
