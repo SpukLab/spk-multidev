@@ -60,7 +60,7 @@ jobs:
       - name: Export disposable runtime coordinates
         run: |
           npx --yes supabase@2.118.0 status --output env             --override-name api.url=NEXT_PUBLIC_SUPABASE_URL             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY             > /tmp/supabase.env
-          grep -E '^(DB_URL|NEXT_PUBLIC_SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY)=' /tmp/supabase.env >> "$GITHUB_ENV"
+          grep -E '^(DB_URL|NEXT_PUBLIC_SUPABASE_URL|SUPABASE_SERVICE_ROLE_KEY)=' /tmp/supabase.env             | sed -E 's/^([^=]+)="(.*)"$/\1=\2/'             >> "$GITHUB_ENV"
           test "$(grep -c '^DB_URL=' /tmp/supabase.env)" -eq 1
           test "$(grep -c '^NEXT_PUBLIC_SUPABASE_URL=' /tmp/supabase.env)" -eq 1
           test "$(grep -c '^SUPABASE_SERVICE_ROLE_KEY=' /tmp/supabase.env)" -eq 1
