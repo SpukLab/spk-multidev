@@ -9,6 +9,7 @@ const canonicalId = process.env.OBS_CANONICAL_KNOWLEDGE_ID;
 
 for (const [name, value] of Object.entries({
   NEXT_PUBLIC_SUPABASE_URL: apiUrl,
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: publicKey,
   SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
   OBS_PROJECT_ID: projectId,
   OBS_LEGACY_KNOWLEDGE_ID: legacyId,
