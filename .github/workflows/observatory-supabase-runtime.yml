@@ -54,8 +54,8 @@ jobs:
           npx --yes supabase@2.118.0 init
           test -f supabase/config.toml
 
-      - name: Start full local Supabase stack
-        run: npx --yes supabase@2.118.0 start
+      - name: Start required local Supabase stack
+        run: npx --yes supabase@2.118.0 start -x inbucket
 
       - name: Export disposable runtime coordinates
         run: |
