@@ -154,6 +154,11 @@ jobs:
           cat /tmp/next.log
           exit 1
 
+      - name: Setup Node 24 for current Realtime probe
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Validate real API isolation and Realtime delivery
         run: node /tmp/observatory-rt/probe.mjs
 
