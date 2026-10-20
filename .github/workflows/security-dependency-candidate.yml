@@ -1,0 +1,59 @@
+name: Security dependency candidate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - security/octokit-supabase-node20-candidate
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/security-dependency-candidate.yml'
+      - 'lib/**'
+      - 'app/**'
+      - 'components/**'
+      - 'next.config.js'
+      - 'tsconfig.json'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-candidate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.20.2
+          cache: npm
+
+      - name: Install committed candidate lock
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+      - name: Dependency audit snapshot
+        run: npm audit --json > /tmp/npm-audit.json || true
+
+      - name: Summarize dependency audit
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const data = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          console.log(`audit-counts=${JSON.stringify(data.metadata?.vulnerabilities ?? {})}`);
+          for (const [name, finding] of Object.entries(data.vulnerabilities ?? {})) {
+            console.log(`${name}\tseverity=${finding.severity}\tdirect=${Boolean(finding.isDirect)}\tfix=${JSON.stringify(finding.fixAvailable)}`);
+          }
+          NODE
+
+      - name: Show resolved candidate versions
+        run: npm ls @octokit/rest @octokit/plugin-paginate-rest @supabase/supabase-js @supabase/auth-js next postcss nanoid --depth=4 || true
