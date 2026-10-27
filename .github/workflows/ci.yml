@@ -52,5 +52,8 @@ jobs:
         if: github.event_name == 'pull_request' && github.head_ref == 'experiment/pattern-001-model-runtime-e2e'
         run: node scripts/pattern001-runtime-e2e.cjs
 
+      - name: Checkpoint handoff brief regression
+        run: npm run test:checkpoint-brief
+
       - name: Next.js build
         run: npm run build
