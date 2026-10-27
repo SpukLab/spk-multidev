@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Panel, PanelMessage } from "@/components/Panel";
+import type { CompletionStatus } from "@/lib/codeIntake/proof";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
@@ -89,6 +90,13 @@ export default function HomePage() {
   );
 
   const [intakeRawText, setIntakeRawText] = useState("");
+  const [intakeModelProof, setIntakeModelProof] = useState<string | null>(null);
+  const [intakeCompletion, setIntakeCompletion] = useState<CompletionStatus>("unknown");
+  function openInIntake(content: string, proof?: string | null, completion?: CompletionStatus) {
+    setIntakeRawText(content);
+    setIntakeModelProof(proof ?? null);
+    setIntakeCompletion(completion ?? "unknown");
+  }
   const [owner, setOwner] = useState("SpukLab");
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("main");
@@ -513,6 +521,8 @@ export default function HomePage() {
         id: nextId(),
         role: "assistant",
         content: assistantContent,
+        integrityProof: data.error ? null : (data.integrityProof ?? null),
+        completion: data.error ? "unknown" : (data.completion ?? "unknown"),
         originLabel:
           roleDef && roleDef.id !== "none" ? `${roleDef.label} (${state.provider})` : undefined,
         // Un mensaje de error nunca se persiste (rama de abajo, `if (!data.error)`)
@@ -754,7 +764,7 @@ export default function HomePage() {
             onChangeRole={(r) => setLeft((s) => ({ ...s, roleId: r }))}
             onSend={(text) => sendMessage("left", text)}
             onSendToOther={(content, template) => sendToOther("left", content, template)}
-            onOpenInIntake={(content) => setIntakeRawText(content)}
+            onOpenInIntake={openInIntake}
             onCaptureKnowledge={handleCaptureKnowledge}
             onDebugLog={logStep}
           />
@@ -804,7 +814,7 @@ export default function HomePage() {
             onChangeRole={(r) => setRight((s) => ({ ...s, roleId: r }))}
             onSend={(text) => sendMessage("right", text)}
             onSendToOther={(content, template) => sendToOther("right", content, template)}
-            onOpenInIntake={(content) => setIntakeRawText(content)}
+            onOpenInIntake={openInIntake}
             onCaptureKnowledge={handleCaptureKnowledge}
             onDebugLog={logStep}
           />
@@ -813,6 +823,8 @@ export default function HomePage() {
 
       <CodeIntakeDrawer
         rawText={intakeRawText}
+        modelProof={intakeModelProof}
+        sourceCompletion={intakeCompletion}
         owner={owner}
         repo={repo}
         branch={branch}
