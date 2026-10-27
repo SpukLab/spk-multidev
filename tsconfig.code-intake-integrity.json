@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".code-intake-integrity-test-dist",
+    "rootDir": ".",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "incremental": false,
+    "declaration": false,
+    "sourceMap": false,
+    "allowJs": false,
+    "types": ["node"]
+  },
+  "include": [
+    "lib/codeIntake/proof.ts",
+    "lib/codeIntake/completion.ts",
+    "tests/code-intake-integrity.test.ts"
+  ]
+}
