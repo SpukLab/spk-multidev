@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { CompletionStatus } from "@/lib/codeIntake/proof";
 import { DiffView } from "./DiffView";
 
 interface ResolvedFile {
@@ -14,6 +15,8 @@ interface ResolvedFile {
 
 interface CodeIntakeDrawerProps {
   rawText: string;
+  modelProof?: string | null;
+  sourceCompletion?: CompletionStatus;
   owner: string;
   repo: string;
   branch: string;
@@ -27,6 +30,8 @@ interface CodeIntakeDrawerProps {
 
 export function CodeIntakeDrawer({
   rawText,
+  modelProof,
+  sourceCompletion = "unknown",
   owner,
   repo,
   branch,
@@ -42,21 +47,42 @@ export function CodeIntakeDrawer({
   const [loading, setLoading] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [acknowledgeUnknown, setAcknowledgeUnknown] = useState(false);
+  const [resolutionProof, setResolutionProof] = useState<string | null>(null);
+  const [expectedHeadSha, setExpectedHeadSha] = useState<string | null>(null);
+  const [resolvedBranch, setResolvedBranch] = useState<string | null>(null);
+
+  // Los resultados solo corresponden a ese contenido y ese repositorio/branch.
+  useEffect(() => {
+    setResolved(null);
+    setResolutionProof(null);
+    setExpectedHeadSha(null);
+    setResolvedBranch(null);
+    setAcknowledgeUnknown(false);
+    setStatus(null);
+  }, [rawText, modelProof, owner, repo, branch]);
 
   async function handleResolve() {
+    if (sourceCompletion === "truncated") {
+      setStatus("Respuesta truncada: pedí continuación. No se puede aplicar.");
+      return;
+    }
     setLoading(true);
     setStatus(null);
     try {
       const res = await fetch("/api/codeintake/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText, owner, repo, branch, githubToken, knownFilePaths, projectId }),
+        body: JSON.stringify({ rawText, owner, repo, branch, githubToken, knownFilePaths, projectId, modelProof, acknowledgeUnknown }),
       });
       const data = await res.json();
       if (data.error) {
         setStatus(`Error: ${data.error}`);
       } else {
         setResolved(data.resolved);
+        setResolutionProof(data.resolutionProof ?? null);
+        setExpectedHeadSha(data.expectedHeadSha ?? null);
+        setResolvedBranch(data.resolvedBranch ?? null);
       }
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : "desconocido"}`);
@@ -66,7 +92,10 @@ export function CodeIntakeDrawer({
   }
 
   async function handleCommit() {
-    if (!resolved) return;
+    if (!resolved || !resolutionProof || !expectedHeadSha || !resolvedBranch) {
+      setStatus("Primero resolvé el diff contra GitHub.");
+      return;
+    }
     const validFiles = resolved.filter((f) => !f.error);
     if (validFiles.length === 0) {
       setStatus("No hay archivos válidos para commitear (revisá los errores marcados).");
@@ -81,7 +110,9 @@ export function CodeIntakeDrawer({
         body: JSON.stringify({
           owner,
           repo,
-          branch,
+          branch: resolvedBranch,
+          expectedHeadSha,
+          resolutionProof,
           message: commitMessage || "Code Intake: cambios aplicados desde SPK_MultiDev",
           files: validFiles.map((f) => ({ path: f.path, content: f.newContent })),
           githubToken,
@@ -94,6 +125,7 @@ export function CodeIntakeDrawer({
       } else {
         setStatus(`Commit exitoso: ${data.commitSha.slice(0, 7)} — push a "${branch}" disparado.`);
         setResolved(null);
+        setResolutionProof(null);
       }
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : "desconocido"}`);
@@ -153,7 +185,22 @@ export function CodeIntakeDrawer({
 
       {rawText && (
         <>
-          <button onClick={handleResolve} disabled={loading} style={primaryButtonStyle}>
+          <p style={{ color: sourceCompletion === "truncated" ? "#fca5a5" : "#aaa", fontSize: 11, lineHeight: 1.5 }}>
+            {sourceCompletion === "truncated"
+              ? "La IA terminó por límite de tokens: Code Intake bloqueado."
+              : modelProof && sourceCompletion === "complete"
+                ? "Respuesta de IA completa con prueba de origen. El diff también se verificará contra el HEAD real."
+                : "Contenido sin confirmación verificable de finalización. Revisá manualmente que no falten archivos ni código."}
+          </p>
+          {sourceCompletion !== "truncated" && (!modelProof || sourceCompletion === "unknown") && (
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 11, marginBottom: 9 }}>
+              <input type="checkbox" checked={acknowledgeUnknown} onChange={(e) => setAcknowledgeUnknown(e.target.checked)} />
+              Confirmo que revisé manualmente este contenido de completitud desconocida.
+            </label>
+          )}
+          <button onClick={handleResolve}
+            disabled={loading || sourceCompletion === "truncated" || ((!modelProof || sourceCompletion === "unknown") && !acknowledgeUnknown)}
+            style={primaryButtonStyle}>
             {loading ? "Resolviendo contra GitHub..." : "Parsear y traer contenido real"}
           </button>
 
@@ -210,7 +257,7 @@ export function CodeIntakeDrawer({
               />
               <button
                 onClick={handleCommit}
-                disabled={loading}
+                disabled={loading || !resolutionProof || !expectedHeadSha}
                 style={{ ...primaryButtonStyle, marginTop: 6 }}
               >
                 {loading ? "Commiteando..." : "Commit & Push"}
