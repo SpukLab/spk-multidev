@@ -1,4 +1,5 @@
 import { ProviderAdapter, SendMessageParams, NormalizedResponse, ModelInfo } from "./types";
+import { chatCompletion } from "../codeIntake/completion";
 
 const OPENAI_BASE_URL = "https://api.openai.com/v1/chat/completions";
 const OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
@@ -30,6 +31,7 @@ export const openaiAdapter: ProviderAdapter = {
       provider: "openai",
       model,
       content,
+      completion: chatCompletion(data?.choices?.[0]?.finish_reason),
       raw: data,
     };
   },
