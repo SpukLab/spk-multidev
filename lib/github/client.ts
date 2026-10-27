@@ -55,7 +55,8 @@ export async function commitFiles(
   ref: RepoRef,
   resolvedFiles: { path: string; content: string | null }[], // content null = delete
   message: string,
-  token?: string
+  token?: string,
+  expectedHeadSha?: string
 ): Promise<string> {
   const octokit = getOctokit(token);
   const branch = ref.branch ?? (await getDefaultBranch(ref, token));
@@ -66,6 +67,9 @@ export async function commitFiles(
     ref: `heads/${branch}`,
   });
   const latestCommitSha = refData.object.sha;
+  if (expectedHeadSha && latestCommitSha !== expectedHeadSha) {
+    throw new Error("El HEAD cambió después de validar el diff. Repetí la resolución antes del commit.");
+  }
 
   const { data: latestCommit } = await octokit.git.getCommit({
     owner: ref.owner,
