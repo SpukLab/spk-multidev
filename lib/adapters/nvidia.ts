@@ -1,4 +1,5 @@
 import { ProviderAdapter, SendMessageParams, NormalizedResponse, ModelInfo } from "./types";
+import { chatCompletion } from "../codeIntake/completion";
 
 // NVIDIA NIM expone una API compatible con el formato de OpenAI
 // (chat completions). Catálogo: Nemotron, DeepSeek, y otros modelos
@@ -33,6 +34,7 @@ export const nvidiaAdapter: ProviderAdapter = {
       provider: "nvidia",
       model,
       content,
+      completion: chatCompletion(data?.choices?.[0]?.finish_reason),
       raw: data,
     };
   },
