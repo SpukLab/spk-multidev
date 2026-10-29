@@ -69,3 +69,39 @@ export function verifyResolutionProof(token: string, binding: ResolutionBinding)
     throw new Error("El commit difiere del diff aprobado o de su HEAD; volvé a resolver.");
   }
 }
+
+// A generated response without an authenticated completion signal is NOT a
+// manually supplied file. Manual intake is a separate, explicit operator path.
+// A pasted file's origin cannot be cryptographically proved: no claim of
+// semantic completeness follows from a manual acknowledgement.
+export type IntakeOrigin = "generated" | "manual";
+export function authorizeIntakeSource(input: {
+  origin: IntakeOrigin;
+  rawText: string;
+  modelProof?: string | null;
+  acknowledgeUnknown?: boolean;
+}): CompletionStatus {
+  if (input.origin === "generated") {
+    if (!input.modelProof) {
+      throw new Error("La respuesta generada no tiene prueba de finalización. No puede abrirse como contenido manual; importá únicamente un archivo revisado por vos.");
+    }
+    const completion = verifyModelProof(input.modelProof, input.rawText);
+    if (completion === "truncated") {
+      throw new Error("La IA agotó su límite de tokens. Solicitá una respuesta completa antes de resolver.");
+    }
+    if (completion === "unknown" && input.acknowledgeUnknown !== true) {
+      throw new Error("La respuesta del modelo tiene estado desconocido. Requiere revisión humana explícita.");
+    }
+    return completion;
+  }
+  if (input.origin === "manual") {
+    if (input.modelProof) {
+      throw new Error("Una respuesta firmada por IA no puede reclasificarse como importación manual.");
+    }
+    if (input.acknowledgeUnknown !== true) {
+      throw new Error("Confirmá explícitamente que revisaste el archivo importado manualmente.");
+    }
+    return "unknown";
+  }
+  throw new Error("Origen de Code Intake inválido.");
+}
