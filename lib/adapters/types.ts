@@ -16,6 +16,7 @@ export interface NormalizedResponse {
   provider: string;
   model: string;
   content: string;
+  completion: import("../codeIntake/proof").CompletionStatus;
   raw?: unknown;
 }
 

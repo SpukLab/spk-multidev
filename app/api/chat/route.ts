@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdapter } from "@/lib/adapters";
 import { ChatMessage } from "@/lib/adapters/types";
+import { issueModelProof } from "@/lib/codeIntake/proof";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent, providerToSource } from "@/lib/events/emit";
 
@@ -125,7 +126,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json(response);
+    return NextResponse.json({ ...response, integrityProof: issueModelProof(response.content, response.completion) });
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     const source = provider ? providerToSource(provider) : "System";

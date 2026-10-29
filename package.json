@@ -11,6 +11,7 @@
     "test:reconciliation": "node scripts/worktree-reconciliation-stress.cjs",
     "test:pattern002": "node -e \"require('fs').rmSync('.pattern002-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.pattern002.json && node scripts/pattern002-replay.cjs && node scripts/pattern002-replay-drift-test.cjs && node scripts/pattern002-fixture-update-test.cjs",
     "test:verifier-integrity": "node -e \"require('fs').rmSync('.verifier-integrity-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.verifier-integrity.json && node scripts/verifier-integrity-boundary.cjs",
+    "test:code-intake-integrity": "node -e \"require('fs').rmSync('.code-intake-integrity-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.code-intake-integrity.json && node --test .code-intake-integrity-test-dist/tests/code-intake-integrity.test.js",
     "test:checkpoint-brief": "node -e \"require('fs').rmSync('.checkpoint-brief-test-dist',{recursive:true,force:true})\" && tsc -p tsconfig.checkpoint-brief.json && node --test .checkpoint-brief-test-dist/tests/checkpoint-brief.test.js"
   },
   "dependencies": {

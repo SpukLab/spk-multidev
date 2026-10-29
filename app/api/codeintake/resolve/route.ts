@@ -3,10 +3,12 @@ import { parseCodeIntake } from "@/lib/codeIntake/parser";
 import { resolveInstructions } from "@/lib/codeIntake/resolve";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent } from "@/lib/events/emit";
+import { getBranchHeadSha } from "@/lib/github/client";
+import { issueResolutionProof, authorizeIntakeSource, IntakeOrigin, CompletionStatus } from "@/lib/codeIntake/proof";
 
 export async function POST(req: NextRequest) {
   try {
-    const { rawText, owner, repo, branch, githubToken, knownFilePaths, projectId } = (await req.json()) as {
+    const { rawText, owner, repo, branch, githubToken, knownFilePaths, projectId, modelProof, acknowledgeUnknown, origin } = (await req.json()) as {
       rawText: string;
       owner: string;
       repo: string;
@@ -14,6 +16,9 @@ export async function POST(req: NextRequest) {
       githubToken?: string;
       knownFilePaths?: string[];
       projectId?: string;
+      modelProof?: string | null;
+      acknowledgeUnknown?: boolean;
+      origin?: IntakeOrigin;
     };
 
     if (!rawText || !owner || !repo) {
@@ -23,13 +28,30 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    let completion: CompletionStatus;
+    try {
+      completion = authorizeIntakeSource({ origin: origin as IntakeOrigin, rawText, modelProof, acknowledgeUnknown });
+    } catch (err: unknown) {
+      return NextResponse.json({ error: getErrorMessage(err) }, { status: 422 });
+    }
+    const before = await getBranchHeadSha({ owner, repo, branch }, githubToken);
     const instructions = parseCodeIntake(rawText);
     const resolved = await resolveInstructions(
-      { owner, repo, branch },
+      { owner, repo, branch: before.branch },
       instructions,
       githubToken,
       knownFilePaths
     );
+
+    const after = await getBranchHeadSha({ owner, repo, branch: before.branch }, githubToken);
+    if (before.sha !== after.sha) {
+      return NextResponse.json({ error: "El HEAD cambió durante la resolución; repetí el diff." }, { status: 409 });
+    }
+    const validFiles = resolved.filter((file) => !file.error).map((file) => ({ path: file.path, content: file.newContent }));
+    if (!validFiles.length) {
+      return NextResponse.json({ error: "No hay operaciones válidas para confirmar." }, { status: 422 });
+    }
+    const resolutionProof = issueResolutionProof({ owner, repo, branch: after.branch, expectedHeadSha: after.sha, files: validFiles });
 
     // Un evento por archivo resuelto: PatchValidated si pasó el diff real
     // contra GitHub, PatchRejected si resolve.ts lo descartó (FIND que no
@@ -48,7 +70,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    return NextResponse.json({ resolved });
+    return NextResponse.json({ resolved, resolutionProof, expectedHeadSha: after.sha, resolvedBranch: after.branch, completion });
   } catch (err: unknown) {
     const message = getErrorMessage(err);
     return NextResponse.json({ error: message }, { status: 500 });

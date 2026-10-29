@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { commitFiles, RepoRef } from "@/lib/github/client";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent } from "@/lib/events/emit";
+import { verifyResolutionProof } from "@/lib/codeIntake/proof";
 
 // Recibe instrucciones ya resueltas (con content final calculado en el
 // cliente tras el flujo fetch -> diff -> confirmar de la sección 7) y las
@@ -20,11 +21,13 @@ export async function POST(req: NextRequest) {
       message: string;
       githubToken?: string;
       projectId?: string;
+      resolutionProof?: string;
+      expectedHeadSha?: string;
     };
     owner = body.owner;
     repo = body.repo;
     projectId = body.projectId ?? null;
-    const { branch, files, message, githubToken } = body;
+    const { branch, files, message, githubToken, resolutionProof, expectedHeadSha } = body;
 
     if (!owner || !repo || !files || !message) {
       return NextResponse.json(
@@ -33,8 +36,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (!Array.isArray(files) || files.length === 0 || !files.every((f) => typeof f?.path === "string" && (typeof f.content === "string" || f.content === null))) {
+      return NextResponse.json({ error: "Archivos de commit inválidos." }, { status: 400 });
+    }
+    if (!resolutionProof || !expectedHeadSha || !branch) {
+      return NextResponse.json({ error: "Falta prueba firmada del diff; resolvé los archivos primero." }, { status: 409 });
+    }
+    try {
+      verifyResolutionProof(resolutionProof, { owner, repo, branch, expectedHeadSha, files });
+    } catch (err: unknown) {
+      return NextResponse.json({ error: getErrorMessage(err) }, { status: 409 });
+    }
     const ref: RepoRef = { owner, repo, branch };
-    const commitSha = await commitFiles(ref, files, message, githubToken);
+    const commitSha = await commitFiles(ref, files, message, githubToken, expectedHeadSha);
 
     // Un solo commit atómico = tres hechos simultáneos: se aplicó el patch,
     // se creó el commit, y el push tuvo éxito (Git Data API hace las tres

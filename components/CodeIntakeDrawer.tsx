@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import type { CompletionStatus, IntakeOrigin } from "@/lib/codeIntake/proof";
 import { DiffView } from "./DiffView";
 
 interface ResolvedFile {
@@ -14,6 +15,10 @@ interface ResolvedFile {
 
 interface CodeIntakeDrawerProps {
   rawText: string;
+  modelProof?: string | null;
+  sourceCompletion?: CompletionStatus;
+  sourceOrigin: IntakeOrigin;
+  onManualImport: (text: string) => void;
   owner: string;
   repo: string;
   branch: string;
@@ -27,6 +32,10 @@ interface CodeIntakeDrawerProps {
 
 export function CodeIntakeDrawer({
   rawText,
+  modelProof,
+  sourceCompletion = "unknown",
+  sourceOrigin,
+  onManualImport,
   owner,
   repo,
   branch,
@@ -42,21 +51,47 @@ export function CodeIntakeDrawer({
   const [loading, setLoading] = useState(false);
   const [commitMessage, setCommitMessage] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  const [acknowledgeUnknown, setAcknowledgeUnknown] = useState(false);
+  const [manualDraft, setManualDraft] = useState("");
+  const [resolutionProof, setResolutionProof] = useState<string | null>(null);
+  const [expectedHeadSha, setExpectedHeadSha] = useState<string | null>(null);
+  const [resolvedBranch, setResolvedBranch] = useState<string | null>(null);
+
+  // Los resultados solo corresponden a ese contenido y ese repositorio/branch.
+  useEffect(() => {
+    setResolved(null);
+    setResolutionProof(null);
+    setExpectedHeadSha(null);
+    setResolvedBranch(null);
+    setAcknowledgeUnknown(false);
+    setStatus(null);
+  }, [rawText, modelProof, owner, repo, branch]);
 
   async function handleResolve() {
+    if (sourceOrigin === "generated" && !modelProof) {
+      setStatus("No existe una prueba de finalización para este mensaje. Usá la importación manual para archivos revisados por vos.");
+      return;
+    }
+    if (sourceCompletion === "truncated") {
+      setStatus("Respuesta truncada: pedí continuación. No se puede aplicar.");
+      return;
+    }
     setLoading(true);
     setStatus(null);
     try {
       const res = await fetch("/api/codeintake/resolve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ rawText, owner, repo, branch, githubToken, knownFilePaths, projectId }),
+        body: JSON.stringify({ rawText, owner, repo, branch, githubToken, knownFilePaths, projectId, modelProof, acknowledgeUnknown, origin: sourceOrigin }),
       });
       const data = await res.json();
       if (data.error) {
         setStatus(`Error: ${data.error}`);
       } else {
         setResolved(data.resolved);
+        setResolutionProof(data.resolutionProof ?? null);
+        setExpectedHeadSha(data.expectedHeadSha ?? null);
+        setResolvedBranch(data.resolvedBranch ?? null);
       }
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : "desconocido"}`);
@@ -66,7 +101,10 @@ export function CodeIntakeDrawer({
   }
 
   async function handleCommit() {
-    if (!resolved) return;
+    if (!resolved || !resolutionProof || !expectedHeadSha || !resolvedBranch) {
+      setStatus("Primero resolvé el diff contra GitHub.");
+      return;
+    }
     const validFiles = resolved.filter((f) => !f.error);
     if (validFiles.length === 0) {
       setStatus("No hay archivos válidos para commitear (revisá los errores marcados).");
@@ -81,7 +119,9 @@ export function CodeIntakeDrawer({
         body: JSON.stringify({
           owner,
           repo,
-          branch,
+          branch: resolvedBranch,
+          expectedHeadSha,
+          resolutionProof,
           message: commitMessage || "Code Intake: cambios aplicados desde SPK_MultiDev",
           files: validFiles.map((f) => ({ path: f.path, content: f.newContent })),
           githubToken,
@@ -92,8 +132,9 @@ export function CodeIntakeDrawer({
       if (data.error) {
         setStatus(`Error al commitear: ${data.error}`);
       } else {
-        setStatus(`Commit exitoso: ${data.commitSha.slice(0, 7)} — push a "${branch}" disparado.`);
+        setStatus(`Commit exitoso: ${data.commitSha.slice(0, 7)} — push a "${resolvedBranch}" disparado.`);
         setResolved(null);
+        setResolutionProof(null);
       }
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : "desconocido"}`);
@@ -145,6 +186,21 @@ export function CodeIntakeDrawer({
         />
       </div>
 
+      <details style={{ marginTop: 10, marginBottom: 10, color: "var(--spk-text-dim)", fontSize: 11 }}>
+        <summary>Importar código revisado manualmente</summary>
+        <textarea
+          value={manualDraft}
+          onChange={(e) => setManualDraft(e.target.value)}
+          placeholder="Pegá los bloques FILE: de un archivo que hayas revisado."
+          rows={5}
+          style={{ ...inputStyle, width: "100%", boxSizing: "border-box", marginTop: 8 }}
+        />
+        <button type="button" style={primaryButtonStyle} disabled={!manualDraft.trim()} onClick={() => onManualImport(manualDraft)}>
+          Usar este texto como importación manual
+        </button>
+        <p>El reconocimiento humano no demuestra completitud ni convierte un fragmento truncado en código seguro.</p>
+      </details>
+
       {!rawText && (
         <p style={{ color: "var(--spk-text-dim)", fontSize: 12 }}>
           Elegí "Abrir en Code Intake" en algún mensaje de un panel para parsearlo acá.
@@ -153,7 +209,26 @@ export function CodeIntakeDrawer({
 
       {rawText && (
         <>
-          <button onClick={handleResolve} disabled={loading} style={primaryButtonStyle}>
+          <p style={{ color: sourceCompletion === "truncated" ? "#fca5a5" : "#aaa", fontSize: 11, lineHeight: 1.5 }}>
+            {sourceOrigin === "manual"
+              ? "Importación manual: el archivo es responsabilidad del operador. Revisá contenido, origen y alcance antes de confirmar."
+              : !modelProof
+                ? "Mensaje generado sin evidencia autenticada de finalización (incluye mensajes históricos). Bloqueado: no se presume íntegro."
+                : sourceCompletion === "truncated"
+                  ? "La IA terminó por límite de tokens: Code Intake bloqueado."
+                  : sourceCompletion === "complete"
+                    ? "Fin normal declarado por API y firmado en servidor. No demuestra corrección funcional del código."
+                    : "La API no confirmó la finalización del modelo. Revisión humana obligatoria."}
+          </p>
+          {(sourceOrigin === "manual" || (modelProof && sourceCompletion === "unknown")) && (
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 11, marginBottom: 9 }}>
+              <input type="checkbox" checked={acknowledgeUnknown} onChange={(e) => setAcknowledgeUnknown(e.target.checked)} />
+              Confirmo que revisé manualmente el contenido y su posible falta de completitud.
+            </label>
+          )}
+          <button onClick={handleResolve}
+            disabled={loading || sourceCompletion === "truncated" || (sourceOrigin === "generated" && !modelProof) || ((sourceOrigin === "manual" || sourceCompletion === "unknown") && !acknowledgeUnknown)}
+            style={primaryButtonStyle}>
             {loading ? "Resolviendo contra GitHub..." : "Parsear y traer contenido real"}
           </button>
 
@@ -210,7 +285,7 @@ export function CodeIntakeDrawer({
               />
               <button
                 onClick={handleCommit}
-                disabled={loading}
+                disabled={loading || !resolutionProof || !expectedHeadSha}
                 style={{ ...primaryButtonStyle, marginTop: 6 }}
               >
                 {loading ? "Commiteando..." : "Commit & Push"}
