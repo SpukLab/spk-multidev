@@ -1,4 +1,5 @@
 import { ProviderAdapter, SendMessageParams, NormalizedResponse, ChatMessage, ModelInfo } from "./types";
+import { anthropicCompletion } from "../codeIntake/completion";
 
 const ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models";
@@ -40,6 +41,7 @@ export const anthropicAdapter: ProviderAdapter = {
       provider: "anthropic",
       model,
       content,
+      completion: anthropicCompletion(data?.stop_reason),
       raw: data,
     };
   },

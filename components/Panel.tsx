@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { providers, getModelsForProvider } from "@/lib/providerModels";
 import { StoredApiKeys } from "@/lib/clientStorage";
+import type { CompletionStatus } from "@/lib/codeIntake/proof";
 
 export interface RoleOption {
   id: string;
@@ -15,6 +16,8 @@ export interface PanelMessage {
   role: "user" | "assistant";
   content: string;
   originLabel?: string;
+  integrityProof?: string | null;
+  completion?: CompletionStatus;
   /** id real en Supabase (messages.id) — se completa después de persistir,
    * usado como source_message_id al capturar Knowledge (Sprint 3).
    * undefined = todavía esperando el resultado de persistMessage.
@@ -47,7 +50,7 @@ interface PanelProps {
   onChangeRole: (roleId: string) => void;
   onSend: (text: string) => void;
   onSendToOther: (content: string, template: string) => void;
-  onOpenInIntake: (content: string) => void;
+  onOpenInIntake: (content: string, modelProof?: string | null, completion?: CompletionStatus) => void;
   onCaptureKnowledge?: (params: { content: string; sourceMessageId?: string; type: string; title: string }) => void;
   onDebugLog?: (step: string, extra?: Record<string, unknown>) => void;
 }
@@ -300,7 +303,7 @@ export function Panel({
                       const hasApplicableCode = /^FILE:\s*.+$/m.test(m.content);
                       return (
                         <button
-                          onClick={() => onOpenInIntake(m.content)}
+                          onClick={() => onOpenInIntake(m.content, m.integrityProof, m.completion)}
                           style={
                             hasApplicableCode
                               ? { ...smallButtonStyle, background: "var(--spk-active-bg)", fontWeight: 600 }
