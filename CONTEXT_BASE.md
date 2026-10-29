@@ -1530,6 +1530,9 @@ automáticamente en el prompt. Primero se validó la primitive de recuperación;
 la Operator Surface se construyó después sobre esa base, durante la primera
 prueba real Session A → Session B.
 
+**Operator Surface posterior (2026-10-27, PR propuesta):** el formulario móvil crea checkpoints mediante la API ya existente y el botón «Copiar handoff» emite contexto declarativo para transportarlo manualmente. No inyecta automáticamente instrucciones, no verifica la narrativa y no cambia el estado de ADR-013.
+
+
 ### Evidencia de validación post-merge — 2026-09-24
 
 Implementación integrada en `main`:

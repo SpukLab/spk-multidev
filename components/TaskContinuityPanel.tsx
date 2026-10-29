@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import type { CheckpointDeclaredState } from "@/lib/checkpoints/contracts";
+import { parseCheckpointLines, renderHandoffBrief } from "@/lib/checkpoints/brief";
+
 export interface TaskCheckpointSummary {
   id: string;
   source_session_id: string;
@@ -92,6 +96,8 @@ export function TaskContinuityPanel({
   evaluation,
   evaluating,
   onEvaluate,
+  creating,
+  onCreate,
 }: {
   checkpoints: TaskCheckpointSummary[];
   loading: boolean;
@@ -99,9 +105,54 @@ export function TaskContinuityPanel({
   evaluation: TaskCheckpointEvaluation | null;
   evaluating: boolean;
   onEvaluate: (checkpointId: string) => void;
+  creating: boolean;
+  onCreate: (state: CheckpointDeclaredState) => Promise<boolean>;
 }) {
   const latest = checkpoints[0] ?? null;
   const stateView = evaluation ? STATE_VIEW[evaluation.handoff.state] : null;
+  const [nextAction, setNextAction] = useState("");
+  const [notes, setNotes] = useState("");
+  const [completed, setCompleted] = useState("");
+  const [modifiedFiles, setModifiedFiles] = useState("");
+  const [failedAttempts, setFailedAttempts] = useState("");
+  const [blockers, setBlockers] = useState("");
+  const [pendingDecisions, setPendingDecisions] = useState("");
+  const [copyStatus, setCopyStatus] = useState("");
+
+  async function submitCheckpoint() {
+    if (!nextAction.trim() || !currentSessionId) return;
+    const created = await onCreate({
+      nextAction: nextAction.trim(),
+      completed: parseCheckpointLines(completed),
+      modifiedFiles: parseCheckpointLines(modifiedFiles),
+      failedAttempts: parseCheckpointLines(failedAttempts),
+      blockers: parseCheckpointLines(blockers),
+      pendingDecisions: parseCheckpointLines(pendingDecisions),
+      notes: notes.trim() || null,
+    });
+    if (created) {
+      setNextAction("");
+      setNotes("");
+      setCompleted("");
+      setModifiedFiles("");
+      setFailedAttempts("");
+      setBlockers("");
+      setPendingDecisions("");
+    }
+  }
+
+  async function copyHandoff() {
+    if (!latest) return;
+    const text = renderHandoffBrief(latest, evaluation?.handoff ?? null);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("Sin acceso al portapapeles");
+      await navigator.clipboard.writeText(text);
+      setCopyStatus("Handoff copiado. Revalidar antes de ejecutarlo.");
+    } catch {
+      window.prompt("Copiá este handoff:", text);
+      setCopyStatus("Handoff mostrado para copiar manualmente.");
+    }
+  }
 
   return (
     <section
@@ -132,6 +183,37 @@ export function TaskContinuityPanel({
         <p style={{ margin: "8px 0 0", color: "#777", fontSize: 11 }}>
           Todavía no hay checkpoints para este Work Item.
         </p>
+      )}
+
+      {currentSessionId ? (
+        <div style={{ marginTop: 12, padding: 8, background: "#171722", borderRadius: 7 }}>
+          <label style={{ display: "block", color: "#bbb", fontSize: 11 }}>
+            Próxima acción (obligatoria)
+            <textarea value={nextAction} onChange={(e) => setNextAction(e.target.value)} rows={2} placeholder="Qué debe retomarse en la próxima sesión" style={{ width: "100%", marginTop: 4, padding: 7, background: "#111119", border: "1px solid #444", borderRadius: 5, color: "white", fontSize: 12, boxSizing: "border-box" }} />
+          </label>
+          <details style={{ marginTop: 8, color: "#aaa", fontSize: 11 }}>
+            <summary>Detalle opcional: avances, archivos, fallos y bloqueos</summary>
+            {([
+              ["Completado", completed, setCompleted],
+              ["Archivos modificados", modifiedFiles, setModifiedFiles],
+              ["Intentos fallidos", failedAttempts, setFailedAttempts],
+              ["Bloqueos", blockers, setBlockers],
+              ["Decisiones pendientes", pendingDecisions, setPendingDecisions],
+              ["Notas", notes, setNotes],
+            ] as const).map(([label, value, setValue]) => (
+              <label key={label} style={{ display: "block", marginTop: 8 }}>
+                {label}
+                <textarea value={value} onChange={(e) => setValue(e.target.value)} rows={2} placeholder="Una entrada por línea" style={{ width: "100%", marginTop: 3, padding: 6, background: "#111119", border: "1px solid #444", borderRadius: 5, color: "white", boxSizing: "border-box" }} />
+              </label>
+            ))}
+          </details>
+          <button type="button" onClick={submitCheckpoint} disabled={creating || !nextAction.trim()} style={{ width: "100%", marginTop: 9, padding: 8, border: "1px solid #6040a0", borderRadius: 7, color: "#e5dcff", background: "#281b41" }}>
+            {creating ? "Guardando checkpoint..." : "Crear checkpoint de esta sesión"}
+          </button>
+          <p style={{ color: "#777", fontSize: 10, marginTop: 6 }}>La sesión debe estar vinculada a este Work Item. Las declaraciones no constituyen Evidence.</p>
+        </div>
+      ) : (
+        <p style={{ fontSize: 11, color: "#777", marginTop: 9 }}>Abrí un chat vinculado a la tarea para crear un checkpoint.</p>
       )}
 
       {latest && (
@@ -255,6 +337,8 @@ export function TaskContinuityPanel({
             )}
           </div>
 
+          <button type="button" onClick={copyHandoff} style={{ width: "100%", marginTop: 9, padding: 7, borderRadius: 7, border: "1px solid #444", background: "#1b1b27", color: "#ddd", fontSize: 11 }}>Copiar handoff para otra IA</button>
+          {copyStatus && <p style={{ color: "#c4b5fd", fontSize: 10 }}>{copyStatus}</p>}
           <p style={{ margin: "8px 0 0", color: "#666", fontSize: 10, lineHeight: 1.4 }}>
             El checkpoint preserva contexto operativo. Sus declaraciones narrativas no son Evidence por sí mismas.
           </p>
