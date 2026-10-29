@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Panel, PanelMessage } from "@/components/Panel";
-import type { CompletionStatus } from "@/lib/codeIntake/proof";
+import type { CompletionStatus, IntakeOrigin } from "@/lib/codeIntake/proof";
 import { LoopConnector } from "@/components/LoopConnector";
 import { CodeIntakeDrawer } from "@/components/CodeIntakeDrawer";
 import { ChatsDrawer } from "@/components/ChatsDrawer";
@@ -92,8 +92,10 @@ export default function HomePage() {
   const [intakeRawText, setIntakeRawText] = useState("");
   const [intakeModelProof, setIntakeModelProof] = useState<string | null>(null);
   const [intakeCompletion, setIntakeCompletion] = useState<CompletionStatus>("unknown");
+  const [intakeOrigin, setIntakeOrigin] = useState<IntakeOrigin>("generated");
   function openInIntake(content: string, proof?: string | null, completion?: CompletionStatus) {
     setIntakeRawText(content);
+    setIntakeOrigin("generated");
     setIntakeModelProof(proof ?? null);
     setIntakeCompletion(completion ?? "unknown");
   }
@@ -825,6 +827,13 @@ export default function HomePage() {
         rawText={intakeRawText}
         modelProof={intakeModelProof}
         sourceCompletion={intakeCompletion}
+        sourceOrigin={intakeOrigin}
+        onManualImport={(text) => {
+          setIntakeRawText(text);
+          setIntakeModelProof(null);
+          setIntakeCompletion("unknown");
+          setIntakeOrigin("manual");
+        }}
         owner={owner}
         repo={repo}
         branch={branch}
