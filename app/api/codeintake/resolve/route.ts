@@ -4,11 +4,11 @@ import { resolveInstructions } from "@/lib/codeIntake/resolve";
 import { getErrorMessage } from "@/lib/errors";
 import { emitEvent } from "@/lib/events/emit";
 import { getBranchHeadSha } from "@/lib/github/client";
-import { issueResolutionProof, verifyModelProof, CompletionStatus } from "@/lib/codeIntake/proof";
+import { issueResolutionProof, authorizeIntakeSource, IntakeOrigin, CompletionStatus } from "@/lib/codeIntake/proof";
 
 export async function POST(req: NextRequest) {
   try {
-    const { rawText, owner, repo, branch, githubToken, knownFilePaths, projectId, modelProof, acknowledgeUnknown } = (await req.json()) as {
+    const { rawText, owner, repo, branch, githubToken, knownFilePaths, projectId, modelProof, acknowledgeUnknown, origin } = (await req.json()) as {
       rawText: string;
       owner: string;
       repo: string;
@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
       projectId?: string;
       modelProof?: string | null;
       acknowledgeUnknown?: boolean;
+      origin?: IntakeOrigin;
     };
 
     if (!rawText || !owner || !repo) {
@@ -27,13 +28,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let completion: CompletionStatus = "unknown";
-    if (modelProof) completion = verifyModelProof(modelProof, rawText);
-    if (completion === "truncated") {
-      return NextResponse.json({ error: "Respuesta truncada: solicitá continuación. El reconocimiento manual no habilita este contenido." }, { status: 422 });
-    }
-    if (completion === "unknown" && acknowledgeUnknown !== true) {
-      return NextResponse.json({ error: "Completitud desconocida: confirmá una revisión manual antes de resolver." }, { status: 422 });
+    let completion: CompletionStatus;
+    try {
+      completion = authorizeIntakeSource({ origin: origin as IntakeOrigin, rawText, modelProof, acknowledgeUnknown });
+    } catch (err: unknown) {
+      return NextResponse.json({ error: getErrorMessage(err) }, { status: 422 });
     }
     const before = await getBranchHeadSha({ owner, repo, branch }, githubToken);
     const instructions = parseCodeIntake(rawText);
