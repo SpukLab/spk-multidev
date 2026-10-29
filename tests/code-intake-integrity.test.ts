@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { anthropicCompletion, chatCompletion } from "../lib/codeIntake/completion";
-import { issueModelProof, verifyModelProof, issueResolutionProof, verifyResolutionProof } from "../lib/codeIntake/proof";
+import { issueModelProof, verifyModelProof, issueResolutionProof, verifyResolutionProof, authorizeIntakeSource } from "../lib/codeIntake/proof";
 process.env.CODE_INTAKE_PROOF_SECRET = "test-only-minimum-32-character-key-abcdefgh";
 
 test("finish reasons distinguish truncation, completion and unknown", () => {
@@ -27,4 +27,19 @@ test("resolution proof binds branch, SHA, filenames and exact bytes", () => {
   assert.throws(() => verifyResolutionProof(token,{...binding,expectedHeadSha:"b".repeat(40)}));
   assert.throws(() => verifyResolutionProof(token,{...binding,files:[{path:"src/a.ts",content:"wrong"}]}));
   assert.throws(() => verifyResolutionProof(token,{...binding,files:[{path:"src/b.ts",content:"export {}"}]}));
+});
+
+test("generated completion cannot be bypassed by dropping its signed proof", () => {
+  const content = "FILE: src/a.ts\nACTION: write\nconst x = 1";
+  const truncated = issueModelProof(content,"truncated")!;
+  const unknown = issueModelProof(content,"unknown")!;
+  const complete = issueModelProof(content,"complete")!;
+  assert.throws(() => authorizeIntakeSource({origin:"generated",rawText:content,acknowledgeUnknown:true}));
+  assert.throws(() => authorizeIntakeSource({origin:"generated",rawText:content,modelProof:truncated,acknowledgeUnknown:true}));
+  assert.throws(() => authorizeIntakeSource({origin:"generated",rawText:content,modelProof:unknown}));
+  assert.equal(authorizeIntakeSource({origin:"generated",rawText:content,modelProof:unknown,acknowledgeUnknown:true}),"unknown");
+  assert.equal(authorizeIntakeSource({origin:"generated",rawText:content,modelProof:complete}),"complete");
+  assert.throws(() => authorizeIntakeSource({origin:"manual",rawText:content,modelProof:truncated,acknowledgeUnknown:true}));
+  assert.throws(() => authorizeIntakeSource({origin:"manual",rawText:content}));
+  assert.equal(authorizeIntakeSource({origin:"manual",rawText:content,acknowledgeUnknown:true}),"unknown");
 });
