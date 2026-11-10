@@ -149,3 +149,14 @@ El piloto comercial no debe afirmar “soporte 24/7 garantizado” hasta demostr
 - **OBS-SOCIAL-001 — Captación desde redes:** comentarios, mensajes y conversiones hacia la web comercial; separado de la cola de soporte, aunque reutilice conectores autorizados.
 - **OBS-LORA-001 — Hardware LoRa/SURKARA:** investigación independiente de comunicaciones offline; no forma parte del alcance P0 de soporte.
 - Este Research Intent permanece en estado **PROPOSED** hasta que se vincule con los mecanismos persistentes de Observatory, preservando el contrato Canon-to-Runtime existente.
+
+
+## 10. Avance verificable del 09/11 — auditoría de web y prototipo aislado
+
+- Auditoría de \`SpukLab/SpukLab-web/main\`: contacto por \`SpukLab@gmail.com\` vía \`mailto:\`, orientador comercial local, puente IA sin persistencia de soporte, sin formulario ni tickets en la web actual. La URL de producción no pudo validarse desde la consulta externa; se trata de evidencia de repositorio.
+- La revisión de PR abiertas #21–#24 confirma trabajo paralelo en identidad, piezas comerciales y contratación; **no modificar ni fusionar esas PR por causa de soporte**.
+- PR de experimento **SpukLab/SpukLab-web#25**, draft: https://github.com/SpukLab/SpukLab-web/pull/25.
+- Prototipo en \`experiments/obs-support-001\`: handler de \`POST /api/support/tickets\`, esquema SQL D1, verificación servidor Turnstile, idempotencia por UUID y HMAC, rechazo sin confirmación ante fallo de base, pruebas unitarias incorporadas a suite de CI.
+- **No desplegado ni conectado** al Worker actual, páginas públicas, CRM, servicios de Meta, correo o cuentas operativas.
+- Criterios aún bloqueantes: pruebas D1 reales separadas, rate limit, aviso de privacidad y retención, bandeja de operador con autenticación, notificación y alertas, canal alternativo, backup/restore, monitoreo, continuidad.
+- No se promete recepción 24/7 verificable ni soporte humano 24/7 hasta validar las condiciones; estado *EXPERIMENT*, no *PILOT*.
