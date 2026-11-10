@@ -160,3 +160,16 @@ El piloto comercial no debe afirmar “soporte 24/7 garantizado” hasta demostr
 - **No desplegado ni conectado** al Worker actual, páginas públicas, CRM, servicios de Meta, correo o cuentas operativas.
 - Criterios aún bloqueantes: pruebas D1 reales separadas, rate limit, aviso de privacidad y retención, bandeja de operador con autenticación, notificación y alertas, canal alternativo, backup/restore, monitoreo, continuidad.
 - No se promete recepción 24/7 verificable ni soporte humano 24/7 hasta validar las condiciones; estado *EXPERIMENT*, no *PILOT*.
+
+
+## 11. Avance del prototipo de gestión privada y alertas (09/11/2026, ciclo 2)
+
+El experimento aislado \`SpukLab/SpukLab-web#25\` evolucionó en la rama \`experiment/obs-support-001-intake\`, SIN merge ni despliegue:
+- recepción con recibo duradero, anti-duplicado y validaciones;
+- migración local \`schema-002-operations.sql\` que crea historial auditable de estado y outbox de alertas dentro de la misma transacción D1;
+- API de operadores verificada mediante Cloudflare Access JWT **firmado** (RS256, \`kid\`, JWKS del equipo, \`iss\`, \`aud\`, \`exp\`) y lista explícita de correos permitidos; no basta con confiar en un encabezado sin verificar;
+- UI interna responsive con CSP nonce, listado, detalle, evolución de estados y nota humana obligatoria al resolver;
+- despachador experimental de outbox con lease, reintentos y envío de metadatos mínimos, pero **sin destino real ni Cron activo**;
+- CI de GitHub Actions \`OBS-SUPPORT-001 local D1 smoke\`, ejecución verificada https://github.com/SpukLab/SpukLab-web/actions/runs/42747390327: **30/30 pruebas unitarias**, **1/1 prueba D1 local** en Wrangler/Workerd, **0 omitidas/0 fallidas**.
+
+El test D1 local **no sustituye** una prueba remota de producción ni certifica disponibilidad continua. Se mantienen como P0: entorno staging remoto separado, Cloudflare Access/MFA probado, privacidad/consentimiento, antiflood, canal de alertas con receptor idempotente, monitoreo independiente, backup/restore, alternativos de recepción y revisión del flujo humano y SLA. No fusionar la PR ni activar atención al público antes de completar esas verificaciones.
