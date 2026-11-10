@@ -173,3 +173,13 @@ El experimento aislado \`SpukLab/SpukLab-web#25\` evolucionó en la rama \`exper
 - CI de GitHub Actions \`OBS-SUPPORT-001 local D1 smoke\`, ejecución verificada https://github.com/SpukLab/SpukLab-web/actions/runs/42747390327: **30/30 pruebas unitarias**, **1/1 prueba D1 local** en Wrangler/Workerd, **0 omitidas/0 fallidas**.
 
 El test D1 local **no sustituye** una prueba remota de producción ni certifica disponibilidad continua. Se mantienen como P0: entorno staging remoto separado, Cloudflare Access/MFA probado, privacidad/consentimiento, antiflood, canal de alertas con receptor idempotente, monitoreo independiente, backup/restore, alternativos de recepción y revisión del flujo humano y SLA. No fusionar la PR ni activar atención al público antes de completar esas verificaciones.
+
+## 12. Presupuesto D1 verificado (10/11/2026)
+
+Fuentes Cloudflare: https://developers.cloudflare.com/d1/platform/pricing/ ; https://developers.cloudflare.com/d1/platform/limits/ ; https://developers.cloudflare.com/workers/platform/pricing/ ; https://developers.cloudflare.com/changelog/post/2026-09-01-d1-free-tier-limit-enforcement/.
+
+- Workers Free: D1 5 millones de filas leídas/día, 100.000 escritas/día, 5 GB globales y 500 MB/base, máximo 10 bases, Time Travel 7 días, Workers 100.000 requests/día. Cuotas compartidas por cuenta.
+- Workers Paid: base USD 5/mes por cuenta, D1 incluido hasta 25.000 millones de filas leídas/mes, 50 millones escritas/mes y 5 GB; excedentes USD 0,001 por millón leídas, USD 1 por millón escritas, USD 0,75/GB-mes almacenado.
+- Riesgo operativo: desde 01/09/2026, al superar cuotas diarias D1 en Free las consultas FALLAN hasta el reset; mantener canal alternativo y nunca confirmar un ticket no persistido. Un ticket consume varias escrituras (ticket, historial, outbox, índices).
+- Hipótesis inicial de costo: USD 0/mes para primeros pilotos si se mide y limita uso. Separar costo de D1 de la mensajería (WhatsApp/email) y monitoreo. Alertar sobre 50/75/90% de utilización diaria y contrastar métricas reales (rows_read/rows_written).
+- No se autoriza cambiar de plan, crear bases remotas, habilitar gastos ni prometer SLA 24/7 por esta investigación. Criterio de evaluación: costo comparativo y resiliencia para 2, 10 y 50 clientes.
