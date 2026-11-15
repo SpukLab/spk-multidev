@@ -187,6 +187,14 @@ export function TaskContinuityPanel({
         </p>
       )}
 
+      {latest && selectedBranch.trim() && latest.branch !== selectedBranch.trim() && (
+        <p style={{ fontSize: 11, color: "#fbbf24", margin: "10px 0", lineHeight: 1.5 }}>
+          Atención: el último checkpoint fue observado en <code>{latest.branch}</code>, no en
+          {" "}<code>{selectedBranch}</code>. La evaluación de continuidad comprueba exclusivamente
+          la rama guardada en el checkpoint. Para evaluar la nueva rama, creá otro checkpoint.
+        </p>
+      )}
+
       {currentSessionId ? (
         <div style={{ marginTop: 12, padding: 8, background: "#171722", borderRadius: 7 }}>
           <p style={{ fontSize: 11, color: "#c4b5fd", margin: "0 0 8px" }}>Rama que se verificará: <code>{selectedBranch || "(sin seleccionar)"}</code></p>
