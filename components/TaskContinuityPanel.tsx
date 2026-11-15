@@ -96,12 +96,14 @@ export function TaskContinuityPanel({
   evaluation,
   evaluating,
   onEvaluate,
+  selectedBranch,
   creating,
   onCreate,
 }: {
   checkpoints: TaskCheckpointSummary[];
   loading: boolean;
   currentSessionId: string | null;
+  selectedBranch: string;
   evaluation: TaskCheckpointEvaluation | null;
   evaluating: boolean;
   onEvaluate: (checkpointId: string) => void;
@@ -187,6 +189,7 @@ export function TaskContinuityPanel({
 
       {currentSessionId ? (
         <div style={{ marginTop: 12, padding: 8, background: "#171722", borderRadius: 7 }}>
+          <p style={{ fontSize: 11, color: "#c4b5fd", margin: "0 0 8px" }}>Rama que se verificará: <code>{selectedBranch || "(sin seleccionar)"}</code></p>
           <label style={{ display: "block", color: "#bbb", fontSize: 11 }}>
             Próxima acción (obligatoria)
             <textarea value={nextAction} onChange={(e) => setNextAction(e.target.value)} rows={2} placeholder="Qué debe retomarse en la próxima sesión" style={{ width: "100%", marginTop: 4, padding: 7, background: "#111119", border: "1px solid #444", borderRadius: 5, color: "white", fontSize: 12, boxSizing: "border-box" }} />
@@ -207,7 +210,7 @@ export function TaskContinuityPanel({
               </label>
             ))}
           </details>
-          <button type="button" onClick={submitCheckpoint} disabled={creating || !nextAction.trim()} style={{ width: "100%", marginTop: 9, padding: 8, border: "1px solid #6040a0", borderRadius: 7, color: "#e5dcff", background: "#281b41" }}>
+          <button type="button" onClick={submitCheckpoint} disabled={creating || !nextAction.trim() || !selectedBranch.trim()} style={{ width: "100%", marginTop: 9, padding: 8, border: "1px solid #6040a0", borderRadius: 7, color: "#e5dcff", background: "#281b41" }}>
             {creating ? "Guardando checkpoint..." : "Crear checkpoint de esta sesión"}
           </button>
           <p style={{ color: "#777", fontSize: 10, marginTop: 6 }}>La sesión debe estar vinculada a este Work Item. Las declaraciones no constituyen Evidence.</p>
