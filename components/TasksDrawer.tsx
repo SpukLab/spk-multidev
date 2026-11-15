@@ -44,12 +44,14 @@ export function TasksDrawer({
   open,
   onClose,
   projectId,
+  branch,
   currentSessionId,
   onActiveTaskChanged,
 }: {
   open: boolean;
   onClose: () => void;
   projectId: string | null;
+  branch: string;
   currentSessionId: string | null;
   onActiveTaskChanged?: () => void;
 }) {
@@ -197,6 +199,10 @@ export function TasksDrawer({
       setError("Seleccioná una tarea y abrí un chat vinculado antes de crear el checkpoint.");
       return false;
     }
+    if (!branch.trim()) {
+      setError("Seleccioná una rama de GitHub válida antes de crear el checkpoint.");
+      return false;
+    }
     setCheckpointCreating(true);
     setError(null);
     try {
@@ -206,6 +212,7 @@ export function TasksDrawer({
         body: JSON.stringify({
           projectId,
           sourceSessionId: currentSessionId,
+          branch: branch.trim(),
           ...declaredState,
           evidenceIds: [],
         }),
@@ -416,6 +423,7 @@ export function TasksDrawer({
                 <TaskContinuityPanel
                   key={openTask.id}
                   checkpoints={checkpoints}
+                  selectedBranch={branch}
                   loading={checkpointsLoading}
                   currentSessionId={currentSessionId}
                   evaluation={checkpointEvaluation}
