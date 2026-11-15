@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".checkpoint-brief-test-dist",
+    "rootDir": ".",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "isolatedModules": false,
+    "incremental": false,
+    "declaration": false,
+    "sourceMap": false,
+    "allowJs": false,
+    "types": ["node"]
+  },
+  "include": [
+    "lib/checkpoints/brief.ts",
+    "lib/checkpoints/contracts.ts",
+    "tests/checkpoint-brief.test.ts"
+  ]
+}

@@ -55,5 +55,8 @@ jobs:
       - name: Code Intake signed completion boundary
         run: npm run test:code-intake-integrity
 
+      - name: Checkpoint handoff brief regression
+        run: npm run test:checkpoint-brief
+
       - name: Next.js build
         run: npm run build

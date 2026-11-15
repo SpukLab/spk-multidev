@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { CheckpointDeclaredState } from "@/lib/checkpoints/contracts";
 import {
   TaskContinuityPanel,
   TaskCheckpointEvaluation,
@@ -43,12 +44,14 @@ export function TasksDrawer({
   open,
   onClose,
   projectId,
+  branch,
   currentSessionId,
   onActiveTaskChanged,
 }: {
   open: boolean;
   onClose: () => void;
   projectId: string | null;
+  branch: string;
   currentSessionId: string | null;
   onActiveTaskChanged?: () => void;
 }) {
@@ -63,6 +66,7 @@ export function TasksDrawer({
   const [checkpointEvaluation, setCheckpointEvaluation] =
     useState<TaskCheckpointEvaluation | null>(null);
   const [checkpointEvaluating, setCheckpointEvaluating] = useState(false);
+  const [checkpointCreating, setCheckpointCreating] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [newObjective, setNewObjective] = useState("");
   const [creating, setCreating] = useState(false);
@@ -187,6 +191,46 @@ export function TasksDrawer({
       setError("No se pudo cargar el detalle de continuidad del Work Item.");
     } finally {
       setCheckpointsLoading(false);
+    }
+  }
+
+  async function handleCreateCheckpoint(declaredState: CheckpointDeclaredState): Promise<boolean> {
+    if (!projectId || !currentSessionId || !openTaskId) {
+      setError("Seleccioná una tarea y abrí un chat vinculado antes de crear el checkpoint.");
+      return false;
+    }
+    if (!branch.trim()) {
+      setError("Seleccioná una rama de GitHub válida antes de crear el checkpoint.");
+      return false;
+    }
+    setCheckpointCreating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/operational-integrity/work-items/" + openTaskId + "/checkpoints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          projectId,
+          sourceSessionId: currentSessionId,
+          branch: branch.trim(),
+          ...declaredState,
+          evidenceIds: [],
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setError(data.canonicalEventPersisted
+          ? "El evento del checkpoint quedó registrado, pero falló la proyección. Recargá antes de intentar otra vez. ID: " + (data.checkpointId ?? "no informado")
+          : "No se creó el checkpoint: " + (data.error ?? "HTTP " + res.status));
+        return false;
+      }
+      await handleOpenTask(openTaskId);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo crear el checkpoint.");
+      return false;
+    } finally {
+      setCheckpointCreating(false);
     }
   }
 
@@ -377,12 +421,16 @@ export function TasksDrawer({
                 </div>
 
                 <TaskContinuityPanel
+                  key={openTask.id}
                   checkpoints={checkpoints}
+                  selectedBranch={branch}
                   loading={checkpointsLoading}
                   currentSessionId={currentSessionId}
                   evaluation={checkpointEvaluation}
                   evaluating={checkpointEvaluating}
                   onEvaluate={handleEvaluateContinuity}
+                  creating={checkpointCreating}
+                  onCreate={handleCreateCheckpoint}
                 />
 
                 <h4 style={{ color: "#888", fontSize: 12, marginTop: 16, marginBottom: 6 }}>Historial (eventos)</h4>

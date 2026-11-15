@@ -41,6 +41,16 @@ export async function POST(
       typeof body.sourceSessionId === "string" ? body.sourceSessionId : "";
     const nextAction =
       typeof body.nextAction === "string" ? body.nextAction.trim() : "";
+    // Never silently substitute the project's default branch for a user checkpoint.
+    // Legacy previews must be refreshed instead of writing misleading "main" evidence.
+    const branch = typeof body.branch === "string" ? body.branch.trim() : "";
+    if (!branch) {
+      return NextResponse.json(
+        { error: "Falta la rama del checkpoint. Abrí la Preview actualizada y volvé a cargar el proyecto antes de crear uno nuevo." },
+        { status: 400 }
+      );
+    }
+
 
     const completed = stringArray(body.completed);
     const modifiedFiles = stringArray(body.modifiedFiles);
@@ -83,7 +93,7 @@ export async function POST(
         notes: typeof body.notes === "string" ? body.notes.trim() || null : null,
       },
       evidenceIds,
-      branch: typeof body.branch === "string" ? body.branch : undefined,
+      branch,
       githubToken:
         typeof body.githubToken === "string" ? body.githubToken : undefined,
       checkpointId:
