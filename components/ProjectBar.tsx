@@ -105,7 +105,7 @@ export function ProjectBar({
           value={branch}
           onChange={(e) => onChangeBranch(e.target.value)}
           placeholder="branch"
-          style={{ ...inputStyle, width: 70 }}
+          style={{ ...inputStyle, width: 250, maxWidth: "100%", flex: "1 1 220px" }}
         />
         <button onClick={onLoadProject} disabled={loading} style={buttonStyle}>
           {loading ? "Cargando..." : "Cargar proyecto"}
